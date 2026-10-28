@@ -1,0 +1,32 @@
+# ROS 2 & CMake Build & Install artifacts
+build/
+install/
+log/
+**/build/
+**/install/
+*.o
+*.a
+*.so
+*.dylib
+
+# Python Virtual Environments & Caches
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Large Datasets and Bag Files (Exceeds GitHub 100MB limit)
+datasets/
+*.db3
+*.mcap
+
+# Point cloud output dumps
+*.pcd
+
+# IDE & OS files
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*~
