@@ -1,163 +1,189 @@
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-import numpy as np
+#!/usr/bin/env python3
+"""Generates the report figures from the benchmark outputs (no hard-coded numbers).
+
+Inputs:  Reports/benchmark/benchmark_results.json   (scripts/benchmark_octomap)
+         Reports/benchmark/dynamic_octomap_stats.json (scripts/dynamic_voxel_octomap --stats)
+Outputs: Reports/figures/*.png
+"""
+import json
 import os
 
-os.makedirs('Reports/figures', exist_ok=True)
+import matplotlib
 
-# Set global academic style
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BENCH = os.path.join(ROOT, "Reports", "benchmark", "benchmark_results.json")
+STATS = os.path.join(ROOT, "Reports", "benchmark", "dynamic_octomap_stats.json")
+OUT = os.path.join(ROOT, "Reports", "figures")
+os.makedirs(OUT, exist_ok=True)
+
+# Palette (validated reference categorical slots 1-2) and neutral inks.
+C1, C2 = "#2a78d6", "#eb6834"
+INK, INK2, GRID = "#0b0b0b", "#52514e", "#e4e3df"
+
 plt.rcParams.update({
-    'font.family': 'serif',
-    'font.size': 11,
-    'axes.labelsize': 12,
-    'axes.titlesize': 13,
-    'xtick.labelsize': 11,
-    'ytick.labelsize': 11,
-    'legend.fontsize': 10.5,
-    'figure.titlesize': 14,
-    'figure.dpi': 300
+    "font.family": "serif", "font.size": 10, "axes.labelsize": 10, "axes.titlesize": 10.5,
+    "xtick.labelsize": 9, "ytick.labelsize": 9, "legend.fontsize": 9, "figure.dpi": 300,
+    "axes.edgecolor": INK2, "axes.labelcolor": INK, "xtick.color": INK2, "ytick.color": INK2,
+    "axes.spines.top": False, "axes.spines.right": False, "axes.grid": True, "grid.color": GRID,
+    "grid.linewidth": 0.6, "axes.axisbelow": True, "legend.frameon": False,
 })
 
-models = ['Uniform 0.40m', 'Uniform 0.20m', 'Uniform 0.10m', 'Dynamic Adaptive\n(0.05m–0.40m)']
-file_sizes_kb = [21.7, 84.3, 320.9, 334.7]
-total_nodes = [41343, 157247, 531026, 1370457]
-leaf_voxels = [30299, 114165, 366772, 1199150]
-raycast_latency_us = [4.356, 7.976, 14.587, 0.119]
-chamfer_dist_m = [0.1623, 0.0878, 0.0472, 0.1890]
+with open(BENCH) as f:
+    bench = json.load(f)
+with open(STATS) as f:
+    stats = json.load(f)
 
-# =========================================================================
-# Figure 1: Raycasting Collision Query Latency (Log Scale & Linear)
-# =========================================================================
-fig, ax = plt.subplots(figsize=(7.5, 4.5))
-colors = ['#4682B4', '#5F9EA0', '#6495ED', '#D9534F']
-bars = ax.bar(models, raycast_latency_us, color=colors, width=0.55, edgecolor='black', linewidth=1.2)
+maps = [m for m in bench["maps"] if not m["name"].startswith("Legacy")]
+by_name = {m["name"]: m for m in maps}
+uniform = sorted([m for m in maps if m["name"].startswith("Uniform")], key=lambda m: -m["resolution"])
+dynamic = by_name["Dynamic Adaptive"]
+labels = [m["name"].replace("Uniform ", "Uniform\n").replace("Dynamic Adaptive", "Adaptive\n0.05-0.40 m") for m in maps]
 
-ax.set_ylabel(r'Raycast Latency ($\mu$s / query) [Log Scale]')
-ax.set_title('Obstacle Collision Query Latency Across Octree Representations')
-ax.set_yscale('log')
-ax.set_ylim(0.05, 30)
-ax.grid(axis='y', linestyle='--', alpha=0.7)
 
-# Annotate values
-for bar, val in zip(bars, raycast_latency_us):
-    yval = bar.get_height()
-    if val < 1.0:
-        ax.text(bar.get_x() + bar.get_width()/2.0, yval * 1.5, f'{val:.3f} $\mu$s\n(122x Faster)', 
-                ha='center', va='bottom', fontweight='bold', color='#B22222')
-    else:
-        ax.text(bar.get_x() + bar.get_width()/2.0, yval * 1.15, f'{val:.2f} $\mu$s', 
-                ha='center', va='bottom', fontweight='medium')
+short_labels = [m["name"].replace("Uniform ", "").replace(" m", "").replace("Dynamic Adaptive", "Adaptive") for m in maps]
 
-plt.tight_layout()
-plt.savefig('Reports/figures/raycast_latency_comparison.png', dpi=300)
-plt.close()
-print("Saved raycast_latency_comparison.png")
 
-# =========================================================================
-# Figure 2: Total Nodes vs File Size Trade-Off
-# =========================================================================
-fig, ax1 = plt.subplots(figsize=(8, 4.8))
+def save(fig, name):
+    fig.tight_layout()
+    fig.savefig(os.path.join(OUT, name), dpi=300)
+    plt.close(fig)
+    print("Saved", name)
 
-x = np.arange(len(models))
-width = 0.35
 
-color1 = '#2B5B84'
-color2 = '#E67E22'
+def bar_labels(ax, bars, fmt):
+    for b in bars:
+        ax.annotate(fmt(b.get_height()), (b.get_x() + b.get_width() / 2, b.get_height()),
+                    xytext=(0, 2), textcoords="offset points", ha="center", va="bottom", fontsize=7.5, color=INK)
 
-rects1 = ax1.bar(x - width/2, [n / 1000.0 for n in total_nodes], width, label='Total Nodes (x10³)', 
-                 color=color1, edgecolor='black', linewidth=1)
-ax1.set_ylabel('Total Nodes (Thousands)', color=color1, fontweight='bold')
-ax1.tick_params(axis='y', labelcolor=color1)
-ax1.set_xticks(x)
-ax1.set_xticklabels(models)
-ax1.set_ylim(0, 1600)
 
-ax2 = ax1.twinx()
-rects2 = ax2.bar(x + width/2, file_sizes_kb, width, label='File Size (KB)', 
-                 color=color2, edgecolor='black', linewidth=1)
-ax2.set_ylabel('File Size on Disk (KB)', color=color2, fontweight='bold')
-ax2.tick_params(axis='y', labelcolor=color2)
-ax2.set_ylim(0, 420)
+# ---------------------------------------------------------------------------------------------
+# Figure 1: ray-cast latency, two ray sets (small multiples), castRay vs hierarchical traversal.
+# ---------------------------------------------------------------------------------------------
+fig, axes = plt.subplots(1, 2, figsize=(8.6, 3.6), sharey=True)
+titles = {"omni": "Omnidirectional rays (mostly misses)", "surface": "Surface-directed rays (mostly hits)"}
+x = range(len(maps))
+w = 0.38
+for ax, key in zip(axes, ["omni", "surface"]):
+    a = [m["rays"][key]["castray"]["us_per_ray"] for m in maps]
+    b = [m["rays"][key]["hierarchical"]["us_per_ray"] for m in maps]
+    b1 = ax.bar([i - w / 2 - 0.01 for i in x], a, w, color=C1, label="OctoMap castRay()")
+    b2 = ax.bar([i + w / 2 + 0.01 for i in x], b, w, color=C2, label="Hierarchical traversal")
+    bar_labels(ax, b1, lambda v: f"{v:.1f}")
+    bar_labels(ax, b2, lambda v: f"{v:.2f}")
+    ax.set_yscale("log")
+    ax.set_ylim(0.2, 40)
+    ax.set_xticks(list(x))
+    ax.set_xticklabels(labels)
+    ax.set_title(titles[key], color=INK)
+    ax.grid(axis="x", visible=False)
+axes[0].set_ylabel(r"Mean latency ($\mu$s / ray, log scale)")
+axes[0].legend(loc="upper left")
+save(fig, "raycast_latency_comparison.png")
 
-plt.title('Octree Complexity vs Binary Storage Footprint')
-ax1.grid(axis='y', linestyle=':', alpha=0.6)
+# ---------------------------------------------------------------------------------------------
+# Figure 2: storage footprint (small multiples, one axis each).
+# ---------------------------------------------------------------------------------------------
+fig, axes = plt.subplots(1, 3, figsize=(9.0, 3.0))
+panels = [("file_kb", "Binary file (.bt), KB", lambda v: f"{v:,.0f}"),
+          ("memory_bytes", "In-memory tree, MB", lambda v: f"{v:,.1f}"),
+          ("occupied_leaves", "Occupied leaves, thousands", lambda v: f"{v:,.0f}")]
+scale = {"file_kb": 1.0, "memory_bytes": 1.0 / 2**20, "occupied_leaves": 1e-3}
+for ax, (key, title, fmt) in zip(axes, panels):
+    vals = [m[key] * scale[key] for m in maps]
+    colors = [C2 if m is dynamic else C1 for m in maps]
+    bars = ax.bar(list(x), vals, 0.62, color=colors)
+    bar_labels(ax, bars, fmt)
+    ax.set_title(title, color=INK)
+    ax.set_xticks(list(x))
+    ax.set_xticklabels(short_labels, fontsize=8.5)
+    ax.set_ylim(0, max(vals) * 1.18)
+    ax.set_xlabel("Uniform voxel size (m) / adaptive", fontsize=8, color=INK2)
+    ax.grid(axis="x", visible=False)
+save(fig, "storage_footprint.png")
 
-# Annotate Dynamic representation efficiency
-ax1.annotate('1,370,457 nodes\n(2.58x detail of 0.1m)', 
-             xy=(3 - width/2, 1370.457), xytext=(2.2, 1420),
-             arrowprops=dict(facecolor='black', shrink=0.08, width=1, headwidth=6),
-             fontweight='bold', fontsize=9.5)
+# ---------------------------------------------------------------------------------------------
+# Figure 3: accuracy vs storage, split by point class (edge / planar).
+# ---------------------------------------------------------------------------------------------
+fig, axes = plt.subplots(1, 2, figsize=(8.6, 3.5), sharey=True)
+for ax, key, title in [(axes[0], "chamfer_c2m_edge", "Edge / thin-structure points ($\\sigma_n \\geq 0.06$)"),
+                       (axes[1], "chamfer_c2m_planar", "Planar points ($\\sigma_n < 0.025$)")]:
+    ux = [m["file_kb"] for m in uniform]
+    uy = [m[key] for m in uniform]
+    ax.plot(ux, uy, "-o", color=C1, lw=2, ms=6, label="Uniform OctoMap", zorder=3,
+            markeredgecolor="white", markeredgewidth=1.5)
+    for m in uniform:
+        ax.annotate(m["name"].replace("Uniform ", ""), (m["file_kb"], m[key]), xytext=(5, 4),
+                    textcoords="offset points", fontsize=8, color=INK2)
+    ax.plot([dynamic["file_kb"]], [dynamic[key]], "D", color=C2, ms=8, label="Adaptive (this work)", zorder=4,
+            markeredgecolor="white", markeredgewidth=1.5)
+    ax.annotate(f"Adaptive\n{dynamic[key]:.3f} m", (dynamic["file_kb"], dynamic[key]), xytext=(-62, 10),
+                textcoords="offset points", fontsize=8, color=INK)
+    ax.set_xscale("log")
+    ax.set_xlabel("Binary file size (KB, log scale)")
+    ax.set_title(title, color=INK)
+axes[0].set_ylabel("Cloud-to-map distance (m)")
+axes[0].legend(loc="upper right")
+save(fig, "accuracy_vs_storage.png")
 
-ax2.annotate('334.7 KB\n(+4.3% storage)', 
-             xy=(3 + width/2, 334.7), xytext=(2.5, 360),
-             arrowprops=dict(facecolor='black', shrink=0.08, width=1, headwidth=6),
-             fontweight='bold', fontsize=9.5, color='#B22222')
+# ---------------------------------------------------------------------------------------------
+# Figure 4: effective voxel size at edge vs planar points.
+# ---------------------------------------------------------------------------------------------
+fig, ax = plt.subplots(figsize=(7.2, 3.3))
+e = [m["voxel_at_edge_m"] for m in maps]
+p = [m["voxel_at_planar_m"] for m in maps]
+b1 = ax.bar([i - w / 2 - 0.01 for i in x], e, w, color=C1, label="Edge / thin-structure points")
+b2 = ax.bar([i + w / 2 + 0.01 for i in x], p, w, color=C2, label="Planar points")
+bar_labels(ax, b1, lambda v: f"{v:.3f}")
+bar_labels(ax, b2, lambda v: f"{v:.3f}")
+ax.set_ylabel("Mean edge length of the voxel\ncontaining the point (m)")
+ax.set_xticks(list(x))
+ax.set_xticklabels(labels)
+ax.set_ylim(0, max(e + p) * 1.15)
+ax.legend(loc="upper right")
+ax.grid(axis="x", visible=False)
+save(fig, "effective_voxel_size.png")
 
-plt.tight_layout()
-plt.savefig('Reports/figures/node_count_storage_tradeoff.png', dpi=300)
-plt.close()
-print("Saved node_count_storage_tradeoff.png")
+# ---------------------------------------------------------------------------------------------
+# Figure 5: adaptive depth distribution (points requested / inserted, leaves written).
+# ---------------------------------------------------------------------------------------------
+res0, dmax = stats["base_resolution"], stats["d_max"]
+depths = sorted({int(d) for d in stats["requested_depth_points"]} | {int(d) for d in stats["insertion_depth_points"]})
+dlabels = [f"Depth {d}\n{res0 * 2 ** (dmax - d):.2f} m" for d in depths]
+fig, axes = plt.subplots(1, 2, figsize=(8.6, 3.2))
+req = [stats["requested_depth_points"].get(str(d), 0) for d in depths]
+ins = [stats["insertion_depth_points"].get(str(d), 0) for d in depths]
+tot = sum(req)
+yy = range(len(depths))
+h = 0.38
+r1 = axes[0].barh([i + h / 2 + 0.01 for i in yy], [100 * v / tot for v in req], h, color=C1, label="Requested by policy")
+r2 = axes[0].barh([i - h / 2 - 0.01 for i in yy], [100 * v / tot for v in ins], h, color=C2,
+                  label="Inserted (after refinement)")
+for bars in (r1, r2):
+    for b in bars:
+        axes[0].annotate(f"{b.get_width():.1f}%", (b.get_width(), b.get_y() + b.get_height() / 2), xytext=(3, 0),
+                         textcoords="offset points", va="center", fontsize=7.5, color=INK)
+axes[0].set_yticks(list(yy))
+axes[0].set_yticklabels(dlabels)
+axes[0].set_xlabel(f"Share of {tot:,} points (%)")
+axes[0].set_xlim(0, 88)
+axes[0].set_title("Points per octree depth", color=INK)
+axes[0].legend(loc="center right")
+axes[0].grid(axis="y", visible=False)
 
-# =========================================================================
-# Figure 3: Point Cloud Adaptive Depth Distribution
-# =========================================================================
-depth_labels = [
-    'Depth 13 (0.40m)\nDistant Runway/Ground',
-    'Depth 14 (0.20m)\nNear-Field Ground',
-    'Depth 15 (0.10m)\nBuilding Facades',
-    'Depth 16 (0.05m)\nThin Edges/Cables/Poles'
-]
-depth_points = [572302, 234735, 346764, 753260]
-depth_pcts = [30.01, 12.31, 18.18, 39.50]
-palette = ['#85C1E9', '#5DADE2', '#3498DB', '#1B4F72']
-
-fig, ax = plt.subplots(figsize=(8, 4.2))
-bars = ax.barh(depth_labels, depth_pcts, color=palette, edgecolor='black', linewidth=1.1, height=0.55)
-
-ax.set_xlabel('Point Distribution Percentage (%)')
-ax.set_title('Spatial Point Cloud Distribution Across Adaptive Octree Depths (1,907,061 Points)')
-ax.set_xlim(0, 48)
-ax.grid(axis='x', linestyle='--', alpha=0.7)
-
-for bar, pt, pct in zip(bars, depth_points, depth_pcts):
-    w = bar.get_width()
-    ax.text(w + 1.0, bar.get_y() + bar.get_height()/2.0, 
-            f'{pct:.1f}% ({pt:,} pts)', va='center', fontweight='bold', fontsize=10)
-
-plt.tight_layout()
-plt.savefig('Reports/figures/depth_distribution.png', dpi=300)
-plt.close()
-print("Saved depth_distribution.png")
-
-# =========================================================================
-# Figure 4: Chamfer Distance vs Collision Checking Latency Tradeoff
-# =========================================================================
-fig, ax = plt.subplots(figsize=(7.5, 4.8))
-
-for i, (m, c, r, s) in enumerate(zip(models, chamfer_dist_m, raycast_latency_us, file_sizes_kb)):
-    color = '#D9534F' if 'Dynamic' in m else '#2B5B84'
-    ax.scatter(c, r, s=s*2.5, color=color, alpha=0.85, edgecolors='black', linewidth=1.5, zorder=5)
-    offset_x = 0.005 if i != 3 else -0.045
-    offset_y = 0.8 if i != 3 else 0.05
-    label_txt = m.replace('\n', ' ') + f' ({s:.1f} KB)'
-    ax.annotate(label_txt, (c, r), xytext=(c + offset_x, r + offset_y),
-                fontweight='bold' if 'Dynamic' in m else 'normal', fontsize=9.5)
-
-ax.set_xlabel('Chamfer Distance $d_{CD}$ to Ground Truth (m)')
-ax.set_ylabel(r'Raycast Latency ($\mu$s / query)')
-ax.set_title('Pareto Frontier: Surface Discrepancy vs Collision Checking Latency')
-ax.grid(True, linestyle='--', alpha=0.6)
-ax.set_yscale('log')
-ax.set_ylim(0.08, 25)
-ax.set_xlim(0.02, 0.22)
-
-# Size legend annotation
-ax.text(0.03, 0.15, 'Circle area $\propto$ File Size (KB)', style='italic', fontsize=10,
-        bbox=dict(boxstyle='round,pad=0.5', facecolor='#F2F3F4', alpha=0.8))
-
-plt.tight_layout()
-plt.savefig('Reports/figures/chamfer_vs_latency_pareto.png', dpi=300)
-plt.close()
-print("Saved chamfer_vs_latency_pareto.png")
-
+leaf = stats["occupied_leaf_depths"]
+ld = sorted(int(d) for d in leaf)
+lv = [leaf[str(d)] / 1e3 for d in ld]
+bars = axes[1].barh(range(len(ld)), lv, 0.6, color=C2)
+for b in bars:
+    axes[1].annotate(f"{b.get_width():,.1f}k", (b.get_width(), b.get_y() + b.get_height() / 2), xytext=(3, 0),
+                     textcoords="offset points", va="center", fontsize=7.5, color=INK)
+axes[1].set_yticks(range(len(ld)))
+axes[1].set_yticklabels([f"Depth {d}\n{res0 * 2 ** (dmax - d):.2f} m" for d in ld])
+axes[1].set_xlabel("Occupied leaves (thousands)")
+axes[1].set_xlim(0, max(lv) * 1.2)
+axes[1].set_title("Occupied leaves per depth (after pruning)", color=INK)
+axes[1].grid(axis="y", visible=False)
+save(fig, "depth_distribution.png")

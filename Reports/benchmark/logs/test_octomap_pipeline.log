@@ -1,0 +1,42 @@
+
+--- Test 1: Verifying Generated OctoMap Files ---
+  [PASS] uav_octomap_0.05m.bt exists (1077.3 KB)
+  [PASS] uav_octomap_0.1m.bt exists (320.9 KB)
+  [PASS] uav_octomap_0.2m.bt exists (84.3 KB)
+  [PASS] uav_octomap_0.4m.bt exists (21.7 KB)
+  [PASS] dynamic_octomap.bt exists (337.4 KB)
+  [PASS] dynamic_octomap.ot exists (2572.3 KB)
+
+--- Test 1b: Verifying Map Correctness (benchmark_results.json) ---
+  [PASS] Uniform 0.40 m: no unsupported occupied voxels
+  [PASS] Uniform 0.40 m: all points covered
+  [PASS] Uniform 0.40 m: castRay / hierarchical agreement >= 99.9%
+  [PASS] Uniform 0.20 m: no unsupported occupied voxels
+  [PASS] Uniform 0.20 m: all points covered
+  [PASS] Uniform 0.20 m: castRay / hierarchical agreement >= 99.9%
+  [PASS] Uniform 0.10 m: no unsupported occupied voxels
+  [PASS] Uniform 0.10 m: all points covered
+  [PASS] Uniform 0.10 m: castRay / hierarchical agreement >= 99.9%
+  [PASS] Uniform 0.05 m: no unsupported occupied voxels
+  [PASS] Uniform 0.05 m: all points covered
+  [PASS] Uniform 0.05 m: castRay / hierarchical agreement >= 99.9%
+  [PASS] Dynamic Adaptive: no unsupported occupied voxels
+  [PASS] Dynamic Adaptive: all points covered
+  [PASS] Dynamic Adaptive: castRay / hierarchical agreement >= 99.9%
+
+--- Test 2: Uniform 0.2m OctoMap Baseline: Starting OctoMap Server & Verifying Latched Topics ---
+  Launched octomap_server with 'resolution:=0.2' (PID: 87096)...
+  [PASS] /octomap_binary: received 86164 bytes, frame='camera_init', res=0.2
+  [PASS] /occupied_cells_vis_array: received 17 marker layers, 114165 active 3D voxels
+  [PASS] /projected_map: size=212x341, occupied_cells=6352
+
+--- Test 3: Adaptive Dynamic OctoMap (0.05m-0.4m): Starting OctoMap Server & Verifying Latched Topics ---
+  Launched octomap_server with 'octomap_path:=dynamic' (PID: 87142)...
+  [PASS] /octomap_binary: received 345398 bytes, frame='camera_init', res=0.05
+  [PASS] /occupied_cells_vis_array: received 17 marker layers, 312904 active 3D voxels
+  [PASS] /projected_map: size=846x1369, occupied_cells=98591
+
+=======================================================
+  ALL UNIFORM & DYNAMIC OCTOMAP TESTS PASSED [100%]
+=======================================================
+

@@ -14,6 +14,8 @@
 \usepackage{microtype}
 \usepackage{tabularx}
 \usepackage{float}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
 
 \hypersetup{
     colorlinks=true,
@@ -118,11 +120,11 @@ The matter embodied in this report has not been submitted to any other universit
 % =========================================================================
 \chapter*{Abstract}
 \addcontentsline{toc}{chapter}{Abstract}
-Unmanned Aerial Vehicles (UAVs) integrated with Light Detection and Ranging (LiDAR) sensors enable rapid, high-precision three-dimensional digitisation of large-scale environments. Such spatial reconstructions serve as foundational requirements for autonomous aerial navigation, infrastructure inspection, and structural surveying. Nevertheless, transforming continuous, high-frequency, non-repetitive solid-state LiDAR point clouds into kinematically consistent and memory-efficient spatial maps presents severe computational challenges. Aggressive UAV dynamics induce severe point cloud distortion, while uniform voxel discretization schemes suffer from either memory explosion at fine resolutions or the catastrophic omission of thin, safety-critical obstacles at coarse resolutions.
+Unmanned Aerial Vehicles (UAVs) integrated with Light Detection and Ranging (LiDAR) sensors enable rapid, high-precision three-dimensional digitisation of large-scale environments. Such spatial reconstructions serve as foundational requirements for autonomous aerial navigation, infrastructure inspection, and structural surveying. Nevertheless, transforming continuous, high-frequency, non-repetitive solid-state LiDAR point clouds into kinematically consistent and memory-efficient spatial maps presents severe computational challenges. Aggressive UAV dynamics distort point clouds unless motion is compensated, and uniform voxel grids are either large at fine resolutions or merge thin, safety-critical obstacles into large voxels at coarse resolutions.
 
-This project designs, implements, and evaluates an end-to-end pipeline for 3D environment reconstruction from aerial LiDAR data up to dynamic voxelized occupancy representations. The pipeline eliminates binary serialization anomalies and Quality-of-Service (QoS) mismatches, migrating legacy multi-channel sensor logs into modern ROS 2 standards with zero packet loss across all 4,366 telemetry messages (201 LiDAR frames and 4,165 IMU frames). Direct state estimation is performed via a tightly-coupled Iterated Extended Kalman Filter (IEKF) formulated on the matrix Lie group $SO(3) \times \mathbb{R}^{15}$, supported by an incremental KD-Tree (\textit{ikd-Tree}) to maintain dynamic point registration without explicit feature extraction. From an accumulated global point cloud comprising 1,907,061 spatial vertices spanning a metric envelope of $41.7\text{ m} \times 67.7\text{ m} \times 69.5\text{ m}$, volumetric occupancy octrees are constructed.
+This project designs, implements, and evaluates a pipeline for 3D environment reconstruction from aerial LiDAR data, up to adaptive-resolution voxel maps. Legacy ROS 1 Livox logs from the MARS-LVIG benchmark are converted to ROS 2 Jazzy: the 20-second test slice contains 201 LiDAR scans and 4,165 IMU messages, after the first 169 scans of the source bag (invalid start-up returns) are intentionally discarded. State estimation uses FAST-LIO2, a tightly-coupled Iterated Extended Kalman Filter on the manifold $SO(3) \times \mathbb{R}^{15}$ with an incremental KD-tree (\textit{ikd-Tree}). It produces a 186-pose trajectory and an accumulated cloud of 1,907,061 points spanning $41.7\text{ m} \times 67.7\text{ m} \times 69.5\text{ m}$. From this cloud, occupancy octrees are built at uniform resolutions of 0.05--0.40~m.
 
-To address the limitations of uniform spatial gridding, this research develops a native \textit{Dynamic Voxel Gridding} framework that adapts octree voxel resolutions based on sensor distance and local surface covariance tensors. High-curvature structural boundaries, wires, and vertical poles are automatically resolved at a fine $0.05\text{ m}$ leaf resolution (occupying 753,260 points, 39.5\%), while flat runways and planar terrain are consolidated at coarser $0.40\text{ m}$ nodes (572,302 points, 30.0\%). Quantitative evaluations across 50,000 raycasting queries demonstrate that the dynamic adaptive octree achieves an average collision-checking query latency of $0.12\,\mu\text{s}$ per ray---representing an acceleration of over $120\times$ relative to uniform fine grids ($14.59\,\mu\text{s}$), while preserving 1,370,457 spatial nodes within a compact 334.7 KB binary archive. The software framework provides a fully verified, resource-efficient foundation for real-time onboard obstacle avoidance and path planning.
+To overcome the limits of uniform gridding, this work develops a \textit{Dynamic Voxel Gridding} method. Each point requests an octree depth from its local surface variation $\sigma_n$ and its range to the FAST-LIO2 trajectory. An order-independent two-pass construction (refinement, then insertion) builds the octree without ever expanding an existing leaf, so every occupied voxel contains at least one LiDAR return and unobserved space stays unknown. Verification confirms zero unsupported voxels and 100\% point coverage. It also shows that naive depth-targeted insertion through OctoMap's node expansion falsely occupies the entire $3.3$~km octree volume and yields meaningless ray-casting speed-ups. Against a uniform 0.05~m map, the corrected adaptive map matches its accuracy on edge and thin-structure points (cloud-to-map distance 0.028~m in both) while being $3.2\times$ smaller on disk (337~KB vs.\ 1,077~KB) and $3.0\times$ smaller in memory. Planar regions are deliberately coarser, so whole-scene Chamfer distance (0.051~m) is close to a uniform 0.10~m map of the same size. OctoMap's standard ray caster gains little from adaptivity (17.0 vs.\ 18.1~$\mu$s per ray), because it steps at the base resolution. A hierarchical traversal that skips whole octree cells, validated against it on 99.9\% of 100,000 rays, reduces query latency by $11$--$32\times$ and is 25\% faster on the adaptive map than on the uniform 0.05~m map for surface-directed rays.
 
 \newpage
 
@@ -151,9 +153,9 @@ Light Detection and Ranging (LiDAR) fulfills these requirements by transmitting 
 \section{Scientific Challenges in Aerial LiDAR Reconstruction}
 Transforming raw laser streams into consistent, query-efficient spatial maps presents three core challenges:
 \begin{enumerate}
-    \item \textbf{Quadratic Density Attenuation ($1/r^2$):} Solid-state LiDARs project non-repetitive rosette scanning trajectories. Beam separation expands linearly with range, causing spatial point density to decrease quadratically. Consequently, near-field scans exhibit extreme point concentration ($>10^4\text{ pts/m}^2$), whereas far-field structures are represented by sparse, disjoint returns.
+    \item \textbf{Quadratic Density Attenuation ($1/r^2$):} Solid-state LiDARs project non-repetitive rosette scanning trajectories. Beam separation expands linearly with range, causing spatial point density to decrease quadratically. Consequently, near-field surfaces are sampled densely, whereas far-field structures are represented by sparse, disjoint returns.
     \item \textbf{Motion-Induced Geometric Warping:} A multirotor UAV undergoes continuous high-frequency angular vibration ($150\text{ Hz}$ to $250\text{ Hz}$) and aggressive translational acceleration. Because laser beams within a 100 ms scan frame are gathered sequentially, failure to execute continuous-time motion compensation produces severe distortion, artificial thickness on flat walls, and cumulative state drift.
-    \item \textbf{Volumetric Discretization Bottleneck:} Point clouds containing millions of unorganized coordinates do not differentiate between free traversable space and unobserved space. While hierarchical voxel octrees (such as OctoMap) address free space representation through Bayesian log-odds occupancy updates, standard implementations enforce globally uniform leaf voxel sizes. Enforcing a fine uniform grid ($0.05\text{ m}$) across a large flight envelope induces severe memory inflation, whereas a coarse grid ($0.40\text{ m}$) completely obliterates thin, critical collision hazards such as cables, masts, and tree branches.
+    \item \textbf{Volumetric Discretization Bottleneck:} Point clouds containing millions of unorganized coordinates do not differentiate between free traversable space and unobserved space. While hierarchical voxel octrees (such as OctoMap) address free space representation through Bayesian log-odds occupancy updates, standard implementations enforce globally uniform leaf voxel sizes. A fine uniform grid ($0.05\text{ m}$) is large across a whole flight envelope (1.08~MB on disk and 55~MB in memory for the 20~s sequence used here), whereas a coarse grid ($0.40\text{ m}$) merges thin collision hazards such as cables, masts and branches into large voxels.
 \end{enumerate}
 
 \section{Research Scope and Primary Objectives}
@@ -161,11 +163,11 @@ The scope of this project is strictly focused on establishing a complete, high-e
 
 The specific technical objectives achieved in this research are:
 \begin{itemize}
-    \item \textbf{Data Ingestion \& Deserialization:} Translate legacy custom binary hardware serializations into modern ROS 2 standards with zero packet loss across 4,366 sensor messages.
+    \item \textbf{Data Ingestion \& Deserialization:} Translate legacy ROS 1 Livox custom messages into ROS 2 Jazzy (4,366 messages in the retained 20~s window; the first 169 start-up scans are intentionally discarded).
     \item \textbf{Kinematic State Estimation:} Deploy and tune an Iterated Extended Kalman Filter (IEKF) formulated on matrix Lie groups ($SO(3) \times \mathbb{R}^{15}$) supported by an incremental KD-Tree (\textit{ikd-Tree}), generating a global point cloud of 1,907,061 metric points.
-    \item \textbf{Probabilistic Volumetric Mapping:} Build multi-resolution OctoMap representations ($0.10\text{ m}$, $0.20\text{ m}$, $0.40\text{ m}$) and establish dynamic ROS 2 runtime streaming.
-    \item \textbf{Dynamic Voxel Gridding:} Formulate and implement an adaptive resolution algorithm that allocates octree depths based on 3D surface covariance curvature tensors ($\sigma_n$) and range scaling, achieving $>120\times$ faster collision-checking queries.
-    \item \textbf{Automated Test Verification:} Validate the complete pipeline with automated continuous-integration verification test harnesses.
+    \item \textbf{Volumetric Mapping:} Build uniform occupancy octrees ($0.05$, $0.10$, $0.20$ and $0.40\text{ m}$) and serve them in ROS 2.
+    \item \textbf{Dynamic Voxel Gridding:} Formulate and implement an adaptive-resolution octree whose depth follows local surface variation ($\sigma_n$) and range to the trajectory, built without false occupancy, and benchmark its storage, fidelity and collision-query cost against uniform maps.
+    \item \textbf{Verification:} Check map correctness (no unsupported voxels, full coverage, ray-caster agreement) and live ROS 2 serving with an automated test suite.
 \end{itemize}
 
 \newpage
@@ -180,12 +182,12 @@ LiDAR SLAM architectures have progressed significantly from early geometric feat
 
 However, in aerial environments featuring open sky or feature-sparse runways, edge extraction algorithms frequently fail to identify sufficient geometric constraints, leading to state divergence. Direct LiDAR-Inertial Odometry (LIO) methods emerged to overcome this limitation. LINS \cite{qin2020lins} and LIO-SAM \cite{shan2020liosam} demonstrated the efficacy of tightly coupling raw IMU measurements within factor graphs or iterated Kalman filters to bound rotational drift. 
 
-A major advancement occurred with FAST-LIO \cite{xu2021fastlio} and FAST-LIO2 \cite{xu2022fastlio2}. By registering raw motion-undistorted laser returns directly into a dynamically balanced incremental KD-tree (\textit{ikd-Tree}), FAST-LIO2 avoids feature extraction entirely. Its direct formulation achieves update latencies under $20\text{ ms}$ on dense solid-state scans, providing the mathematical robustness and high frequency required for aggressive aerial maneuvers.
+A major advancement occurred with FAST-LIO \cite{xu2021fastlio} and FAST-LIO2 \cite{xu2022fastlio2}. By registering raw motion-undistorted laser returns directly into a dynamically balanced incremental KD-tree (\textit{ikd-Tree}), FAST-LIO2 avoids feature extraction entirely. Its direct formulation achieves update latencies under $20\text{ ms}$ on dense solid-state scans, providing the robustness and update rate required for aggressive aerial maneuvers. Point-LIO \cite{he2023point} and R3LIVE \cite{lin2022r3live} extend this line to point-wise updates and to fused LiDAR-inertial-visual mapping.
 
 \section{Volumetric Discretization and Occupancy Octrees}
 Accumulating millions of points over time creates unstructured spatial coordinates that cannot be used directly for collision checking. Elfes \cite{elfes1989occupancy} introduced the probabilistic Occupancy Grid Mapping framework, which Hornung et al. \cite{hornung2013octomap} generalized to three dimensions through OctoMap. OctoMap utilizes hierarchical octrees where cubic parent nodes subdivide into eight child voxels down to a pre-defined leaf resolution $\Delta r$. By maintaining log-odds occupancy probabilities and executing raycasting along laser vectors, OctoMap models measurement noise and compresses memory by pruning identical subtrees.
 
-Despite its widespread adoption, classical OctoMap enforces a uniform leaf resolution across the entire reconstructed space. Vespa et al. \cite{vespa2018efficient} and Schaupp et al. \cite{schaupp2021adaptive} explored multi-scale TSDF (Truncated Signed Distance Function) representations for micro-aerial vehicle exploration. However, TSDF grids consume substantial GPU memory per voxel and are optimized for dense surface meshes rather than lightweight volumetric hazard checking. An adaptive occupancy octree that dynamically allocates voxel resolutions based on sensor range physics and local structural complexity is essential for resource-constrained aerial systems.
+Classical OctoMap inserts every measurement at a single leaf resolution; coarser nodes appear only where pruning merges eight identical children. Vespa et al. \cite{vespa2018efficient} and Funk et al. \cite{funk2021multires} developed octree maps (supereight) that support signed-distance and occupancy mapping with resolution adapted to the measurement, mainly driven by sensor distance. This project explores a lightweight variant inside the standard OctoMap data structure: resolution is chosen per point from local surface variation and range, so the result remains a standard \texttt{.bt} file that existing OctoMap tools and \texttt{octomap\_server} can load.
 
 \newpage
 
@@ -195,7 +197,7 @@ Despite its widespread adoption, classical OctoMap enforces a uniform leaf resol
 \chapter{System Architecture and Mathematical Foundations}
 
 \section{Modular Pipeline Architecture}
-The system architecture decouples data ingestion, kinematic state estimation, and spatial voxelization into independent, mathematically verified modules. The perception suite consists of a Livox Avia solid-state LiDAR paired with an internal 6-DoF IMU. Table 3.1 details the sensor parameters.
+The system architecture decouples data ingestion, kinematic state estimation, and spatial voxelization into independent modules. The perception suite consists of a Livox Avia solid-state LiDAR with a built-in 6-axis IMU. Table~\ref{tab:sensor_spec} lists the manufacturer's specifications.
 
 \begin{table}[H]
     \centering
@@ -210,10 +212,10 @@ The system architecture decouples data ingestion, kinematic state estimation, an
         Field of View (FOV) & $70.4^\circ \text{ (Horizontal)} \times 77.2^\circ \text{ (Vertical)}$ \\
         Scanning Mechanism & Non-repetitive rosette scanning pattern \\
         Data Sampling Rate & 240,000 points/second (first return) \\
-        Range Accuracy & $\pm 2\text{ cm}$ (at 25 m, $25^\circ\text{C}$) \\
+        Range Precision & 2 cm ($1\sigma$ at 20 m) \\
         Angular Precision & $< 0.05^\circ$ \\
         Detection Range & 450 m (at 80\% reflectivity), 190 m (at 10\% reflectivity) \\
-        Internal IMU & 6-DoF, sampled at 208.3 Hz \\
+        Built-in IMU & 6-axis; $\approx$208 Hz in the dataset used here \\
         Sensor Mass / Power & 498 g / 9 W (typical) \\
         \bottomrule
     \end{tabular}
@@ -241,14 +243,14 @@ The true state $\mathbf{x} \in \mathcal{M}$ and its estimate $\hat{\mathbf{x}}$ 
         \hat{\mathbf{g}} + \delta \mathbf{g}
     \end{bmatrix}
 \end{equation}
-where $\delta \mathbf{x} \in \mathbb{R}^{18}$ is the generalized error-state vector, and $\exp(\cdot)$ maps Lie algebra elements $\delta \boldsymbol{\theta} \in \mathfrak{so}(3)$ to $SO(3)$ using Rodrigues' formula.
+where $\delta \mathbf{x} \in \mathbb{R}^{18}$ is the generalized error-state vector (see \cite{forster2016manifold, sola2017micro} for on-manifold estimation), and $\exp(\cdot)$ maps Lie algebra elements $\delta \boldsymbol{\theta} \in \mathfrak{so}(3)$ to $SO(3)$ using Rodrigues' formula.
 
 \section{Point-to-Plane Residual Model and the ikd-Tree}
 Every laser return ${}^L \mathbf{p}_i$ sampled at time $t_i$ is compensated for intra-sweep motion:
 \begin{equation}
     {}^W \mathbf{p}_i = \hat{\mathbf{R}} \left( \mathbf{R}_I^L {}^L \mathbf{p}_i + \mathbf{t}_I^L \right) + \hat{\mathbf{p}}
 \end{equation}
-where $\mathbf{R}_I^L = \mathbf{I}_{3 \times 3}$ and $\mathbf{t}_I^L = [0.04165, 0.02326, -0.02840]^T\text{ m}$ are the calibrated LiDAR-to-IMU extrinsics.
+where $\mathbf{R}_I^L = \mathbf{I}_{3 \times 3}$ and $\mathbf{t}_I^L = [0.04165, 0.02326, -0.02840]^T\text{ m}$ are the LiDAR-to-IMU extrinsics, held fixed during estimation (\texttt{extrinsic\_est\_en: false}).
 
 Using the incremental KD-tree (\textit{ikd-Tree}), the $k$-nearest neighbors ($k=5$) of ${}^W \mathbf{p}_i$ in the global map are queried to fit a local planar patch with unit normal $\mathbf{u}_i$ and centroid $\mathbf{q}_i$. The point-to-plane residual $r_i(\mathbf{x})$ is:
 \begin{equation}
@@ -265,6 +267,29 @@ where the measurement Jacobian matrix $\mathbf{H}_i \in \mathbb{R}^{1 \times 18}
     \end{bmatrix}
 \end{equation}
 
+\section{FAST-LIO2 Configuration}
+Table~\ref{tab:fastlio_cfg} lists the settings used (\texttt{src/FAST\_LIO\_ROS2/config/avia.yaml}).
+\begin{table}[H]
+    \centering
+    \caption{FAST-LIO2 configuration}
+    \label{tab:fastlio_cfg}
+    \vspace{2mm}
+    \begin{tabular}{lll}
+        \toprule
+        \textbf{Parameter} & \textbf{Value} & \textbf{Effect} \\
+        \midrule
+        \texttt{blind} & 4.0 m & Discards returns closer than 4 m (airframe, propellers) \\
+        \texttt{point\_filter\_num} & 3 & Keeps one of every three points \\
+        \texttt{filter\_size\_surf} / \texttt{filter\_size\_map} & 0.5 m / 0.5 m & Voxel down-sampling of scans and of the ikd-Tree map \\
+        \texttt{max\_iteration} & 3 & IEKF iterations per scan \\
+        \texttt{NUM\_MATCH\_POINTS} & 5 & Neighbours used for each plane fit \\
+        \texttt{acc\_cov} / \texttt{gyr\_cov} & 0.1 / 0.1 & IMU measurement noise \\
+        \texttt{extrinsic\_est\_en} & false & LiDAR-IMU extrinsics held fixed \\
+        \texttt{pcd\_save\_en}, \texttt{interval} & true, $-1$ & Saves all registered scans to one \texttt{scans.pcd} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
 \section{Bayesian Log-Odds Volumetric Mapping}
 Each cubic octree voxel $n$ maintains occupancy probability $P(n) \in [0, 1]$, updated via recursive log-odds:
 \begin{equation}
@@ -278,7 +303,7 @@ with clamping bounds:
 \begin{equation}
     L(n) = \max \left( l_{\min}, \min \left( L(n), l_{\max} \right) \right)
 \end{equation}
-where $p_{\text{occ}} = 0.70$ ($L_{\text{occ}} = 0.85$), $p_{\text{free}} = 0.40$ ($L_{\text{free}} = -0.405$), $l_{\min} = -2.0$, and $l_{\max} = 3.5$.
+where $p_{\text{occ}} = 0.70$ ($L_{\text{occ}} = 0.85$), $p_{\text{free}} = 0.40$ ($L_{\text{free}} = -0.405$), $l_{\min} = -2.0$, and $l_{\max} = 3.5$. In this project only the hit update $L_{\text{occ}}$ is applied, once per accumulated point: the saved map cloud carries no per-point sensor origin, so free-space updates along rays cannot be computed (Section~\ref{sec:semantics}).
 
 \newpage
 
@@ -287,181 +312,329 @@ where $p_{\text{occ}} = 0.70$ ($L_{\text{occ}} = 0.85$), $p_{\text{free}} = 0.40
 % =========================================================================
 \chapter{Algorithmic Contribution: Dynamic Voxel Gridding}
 
-\section{3D Surface Covariance and Geometric Curvature Tensors}
-To automate resolution scaling across unstructured geometry, we evaluate the 3D structure tensor. For each point $\mathbf{p}_i$, its $k$-nearest neighbors $\mathcal{N}_k(\mathbf{p}_i)$ ($k=25$) are queried. The local mean $\bar{\mathbf{p}}$ and $3 \times 3$ sample covariance matrix $\mathbf{C}$ are:
+\section{Surface Variation from Local Covariance}
+To scale resolution with local geometric complexity, each point is characterised by the 3D structure tensor of its neighbourhood. For each point $\mathbf{p}_i$, its $k$ nearest neighbours $\mathcal{N}_k(\mathbf{p}_i) = \{\mathbf{q}_1, \dots, \mathbf{q}_k\}$ ($k=25$) are queried with a KD-tree. The local mean $\bar{\mathbf{p}}$ and $3 \times 3$ sample covariance matrix $\mathbf{C}$ are:
 \begin{equation}
     \bar{\mathbf{p}} = \frac{1}{k} \sum_{j=1}^k \mathbf{q}_j, \quad \mathbf{C} = \frac{1}{k} \sum_{j=1}^k (\mathbf{q}_j - \bar{\mathbf{p}})(\mathbf{q}_j - \bar{\mathbf{p}})^T
 \end{equation}
-
-Eigen-decomposition of $\mathbf{C}$ yields non-negative eigenvalues sorted in ascending order:
+Eigen-decomposition of $\mathbf{C}$ yields eigenvalues $0 \le \lambda_3 \le \lambda_2 \le \lambda_1$, from which the surface variation is
 \begin{equation}
-    0 \le \lambda_3 \le \lambda_2 \le \lambda_1
+    \sigma_n = \frac{\lambda_3}{\lambda_1 + \lambda_2 + \lambda_3} \in \left[ 0, \tfrac{1}{3} \right]. \label{eq:curv}
 \end{equation}
+For a locally planar neighbourhood $\lambda_3 \approx 0$ and $\sigma_n \to 0$; neighbourhoods that straddle edges, corners or thin structures, as well as noisy or sparsely sampled regions, have larger $\sigma_n$. The computation uses PCL's OpenMP normal estimator \cite{rusu2011pcl}, whose \texttt{curvature} output is exactly Eq.~\eqref{eq:curv}.
 
-The geometric properties of the local neighborhood are characterized by:
-\begin{align}
-    \text{Surface Variation (Curvature):} \quad \sigma_n &= \frac{\lambda_3}{\lambda_1 + \lambda_2 + \lambda_3} \in \left[ 0, \frac{1}{3} \right] \label{eq:curv}\\
-    \text{Planarity:} \quad P_\lambda &= \frac{\lambda_2 - \lambda_3}{\lambda_1} \label{eq:planarity}\\
-    \text{Linearity:} \quad L_\lambda &= \frac{\lambda_1 - \lambda_2}{\lambda_1} \label{eq:linearity}
-\end{align}
-
-Planar ground surfaces satisfy $\lambda_3 \approx 0 \implies \sigma_n \to 0$ and $P_\lambda \to 1$. Conversely, sharp edges, utility poles, and wires scatter in three dimensions, resulting in $\sigma_n \ge 0.06$.
-
-\section{Range-Conditioned Metric and Target Depth Selection}
-In an octree with base resolution $\Delta r_0 = 0.05\text{ m}$ spanning a metric extent of $3,276.8\text{ m}$, the tree depth is $D_{\max} = 16$. The physical voxel dimension at depth $D$ is:
+\section{Range to the Sensor Trajectory}
+Beam footprint grows linearly and sampling density decays with range, so distant returns do not support fine voxels. The range of point $\mathbf{p}_i$ is measured to the nearest pose of the FAST-LIO2 trajectory $\{\mathbf{t}_k\}_{k=1}^{K}$ ($K = 186$ poses logged in \texttt{Log/mat\_pre.txt}):
 \begin{equation}
-    \text{size}(D) = \Delta r_0 \cdot 2^{D_{\max} - D}
+    d_i = \min_{k} \, \| \mathbf{p}_i - \mathbf{t}_k \|_2 .
 \end{equation}
+This is a proxy for the true capture range, because the accumulated cloud does not store which pose observed each point; it is nevertheless more faithful than the distance to the map origin, which ignores the 37.5~m the UAV travels during the sequence.
 
-Table 4.1 outlines the hierarchical depth levels.
+\section{Depth Levels and Target Depth Policy}
+With base resolution $\Delta r_0 = 0.05$~m and OctoMap's fixed maximum depth $D_{\max} = 16$, the octree spans $0.05 \cdot 2^{16} = 3{,}276.8$~m per axis and the voxel edge length at depth $D$ (Table~\ref{tab:depth_levels}) is
+\begin{equation}
+    \text{size}(D) = \Delta r_0 \cdot 2^{D_{\max} - D}.
+\end{equation}
 
 \begin{table}[H]
     \centering
-    \caption{Hierarchical Depth Levels and Metric Voxel Dimensions}
+    \caption{Octree depth levels used by the adaptive map}
     \label{tab:depth_levels}
     \vspace{2mm}
     \begin{tabular}{ccl}
         \toprule
-        \textbf{Tree Depth} & \textbf{Voxel Size} & \textbf{Targeted Physical Geometry} \\
+        \textbf{Tree Depth} & \textbf{Voxel Size} & \textbf{Intended geometry} \\
         \midrule
-        Depth 13 & 0.40 m & Far-field flat ground, airport runways, and horizontal surfaces \\
-        Depth 14 & 0.20 m & Near-field planar surfaces, gradual slopes, and low-gradient terrain \\
-        Depth 15 & 0.10 m & Building facades, structural walls, and moderate boundaries \\
-        Depth 16 & 0.05 m & Sharp geometric edges, utility cables, light masts, and fine structures \\
+        Depth 13 & 0.40 m & Planar surfaces far from the trajectory \\
+        Depth 14 & 0.20 m & Planar surfaces near the trajectory; moderately curved surfaces far away \\
+        Depth 15 & 0.10 m & Moderately curved surfaces near the trajectory \\
+        Depth 16 & 0.05 m & High surface variation: edges, corners, thin structures \\
         \bottomrule
     \end{tabular}
 \end{table}
 
-Let $d = \|\mathbf{p}_i\|_2$ denote the Euclidean range from the sensor origin. The closed-form target depth selection policy $D(\mathbf{p}_i)$ is formulated as:
+The target (requested) depth of each point is:
 \begin{equation}
     D(\mathbf{p}_i) = \begin{cases}
-        13 \ (0.40\text{ m}), & \text{if } \sigma_n < 0.025 \text{ and } d > 15.0\text{ m} \quad \text{(Planar, Far)} \\
-        14 \ (0.20\text{ m}), & \text{if } \sigma_n < 0.025 \text{ and } d \le 15.0\text{ m} \quad \text{(Planar, Near)} \\
-        14 \ (0.20\text{ m}), & \text{if } 0.025 \le \sigma_n < 0.060 \text{ and } d > 25.0\text{ m} \quad \text{(Moderate, Far)} \\
-        15 \ (0.10\text{ m}), & \text{if } 0.025 \le \sigma_n < 0.060 \text{ and } d \le 25.0\text{ m} \quad \text{(Moderate, Near)} \\
-        16 \ (0.05\text{ m}), & \text{if } \sigma_n \ge 0.060 \quad \text{(High Curvature, Edges, Cables)}
+        13 \ (0.40\text{ m}), & \sigma_n < 0.025 \text{ and } d_i > 15\text{ m} \quad \text{(planar, far)} \\
+        14 \ (0.20\text{ m}), & \sigma_n < 0.025 \text{ and } d_i \le 15\text{ m} \quad \text{(planar, near)} \\
+        14 \ (0.20\text{ m}), & 0.025 \le \sigma_n < 0.060 \text{ and } d_i > 25\text{ m} \quad \text{(moderate, far)} \\
+        15 \ (0.10\text{ m}), & 0.025 \le \sigma_n < 0.060 \text{ and } d_i \le 25\text{ m} \quad \text{(moderate, near)} \\
+        16 \ (0.05\text{ m}), & \sigma_n \ge 0.060 \quad \text{(high variation)}
     \end{cases}
+    \label{eq:policy}
 \end{equation}
+The thresholds were set by hand from inspection of the $\sigma_n$ distribution on this dataset; they have not been optimised.
 
-\section{Depth-Targeted Insertion and Constant-Time Serialization}
-Standard OctoMap insertion recursively traverses to leaf depth ($D_{\max}$). In this research, we implement depth-targeted insertion: recursion halts directly when $\text{current\_depth} = \text{target\_depth}$, applying log-odds updates at that hierarchical tier. Inner node occupancies are synchronized via bottom-up propagation:
-\begin{equation}
-    L(n) = \max_{j \in \{0, \dots, 7\}} L(\text{child}_j)
-\end{equation}
+\section{Order-Independent Two-Pass Octree Construction}
 
-Standard binary export routines execute maximum-likelihood thresholding that collapses variable-depth inner nodes into root boundaries. To preserve variable-depth octree nodes, we employ non-destructive binary streaming (\texttt{writeBinaryConst}), which directly streams the active variable-depth node table without altering inner node occupancy states.
+\subsection{Why naive depth-targeted insertion fails}
+A direct way to realise Eq.~\eqref{eq:policy} is to descend the octree for each point and stop at depth $D(\mathbf{p}_i)$. When the descent meets an existing \emph{leaf} above the target depth (a coarser voxel inserted earlier), OctoMap's \texttt{expandNode()} creates all eight children and copies the parent's occupancy into each of them. The same happens to a freshly created root, whose log-odds value is $0$; OctoMap classifies $L(n) \ge 0$ ($P \ge 0.5$) as occupied, so every expanded sibling becomes an occupied voxel. The resulting tree contains occupied voxels that hold no LiDAR return at all, up to depth-1 cells $1{,}638.4$~m wide, and its content depends on point order. An earlier prototype of this work used that approach; Section~\ref{sec:verification} quantifies the effect.
+
+\subsection{Refinement and insertion}
+The implemented construction (\texttt{scripts/dynamic\_voxel\_octomap.cpp}) avoids expansion entirely. Let $\kappa_d(\mathbf{p})$ denote the key of the depth-$d$ voxel containing $\mathbf{p}$.
+
+\begin{algorithm}[H]
+\caption{Two-pass adaptive octree construction}
+\label{alg:twopass}
+\begin{algorithmic}[1]
+\Require points $\{\mathbf{p}_i\}_{i=1}^{N}$, requested depths $D_i = D(\mathbf{p}_i)$, depth range $[D_{\min}, D_{\max}]$
+\Statex \textit{Pass 1: refinement sets}
+\For{$i = 1, \dots, N$}
+    \For{$d = D_{\min}, \dots, D_i - 1$}
+        \State $R_d \gets R_d \cup \{\kappa_d(\mathbf{p}_i)\}$ \Comment{this voxel must be subdivided}
+    \EndFor
+\EndFor
+\Statex \textit{Pass 2: insertion}
+\For{$i = 1, \dots, N$}
+    \State $e_i \gets D_{\min}$
+    \While{$e_i < D_{\max}$ \textbf{and} $\kappa_{e_i}(\mathbf{p}_i) \in R_{e_i}$}
+        \State $e_i \gets e_i + 1$
+    \EndWhile
+    \State create only the path from the root to $\kappa_{e_i}(\mathbf{p}_i)$ and add $L_{\text{occ}}$ to that node
+\EndFor
+\State update inner occupancies ($L(n) = \max_j L(\text{child}_j)$), prune, export with \texttt{writeBinary()}
+\end{algorithmic}
+\end{algorithm}
+
+The construction has four properties that the naive approach lacks:
+\begin{enumerate}
+    \item \textbf{No coarsening:} every ancestor of $\mathbf{p}_i$ at depths $D_{\min} \dots D_i - 1$ is in a refinement set, so $e_i \ge D_i$.
+    \item \textbf{Consistency:} membership of $\kappa_d(\mathbf{p})$ in $R_d$ for $d \le e_i$ depends only on the voxel containing $\mathbf{p}$, so all points in a voxel receive the same insertion depth. No point ever passes through another point's leaf, and no leaf is ever expanded.
+    \item \textbf{Order independence:} $R_d$ and $e_i$ do not depend on the order in which points are processed.
+    \item \textbf{Unknown space preserved:} a node is created only on the path to a voxel that contains at least one point; every other region stays unknown.
+\end{enumerate}
+The implementation counts two kinds of conflict (a leaf on an insertion path, or children below an insertion target) and aborts if either is non-zero; zero conflicts were observed. The effective resolution inside a coarse cell is the finest resolution requested by any point in it. Consequently, planar points next to an edge are inserted finer than they requested (Section~\ref{sec:depthdist}). The cost is $\mathcal{O}(N (D_{\max} - D_{\min}))$ hash-set operations.
+
+Because no voxel is created without support, the standard export path can be used: \texttt{writeBinary()} thresholds every node to its maximum-likelihood state and prunes groups of eight identical occupied children into their parent. This produces a small number of 0.80~m leaves (depth 12) where eight 0.40~m voxels are all occupied. An exactly equivalent volume is represented, and the uniform maps are exported the same way.
+
+\section{Occupancy Semantics}
+\label{sec:semantics}
+Both the uniform and the adaptive maps are \emph{endpoint occupancy octrees}: each LiDAR point contributes a hit update $L_{\text{occ}}$ to its voxel, and no free-space updates are made. Ray-based free-space carving (OctoMap's \texttt{insertPointCloud}) requires the sensor origin of every point. The accumulated \texttt{scans.pcd} does not store it, so observed-free and unobserved space are both \emph{unknown} in these maps. The collision queries below treat unknown space as traversable (\texttt{ignoreUnknown = true}); a planner operating on these maps should treat it conservatively.
+
+\section{Hierarchical Ray Traversal}
+OctoMap's \texttt{castRay()} walks a 3D digital differential analyser (DDA) at the base resolution $\Delta r_0$. Its cost grows with $\text{range}/\Delta r_0$ regardless of how coarse the map is in a region, so it cannot benefit from adaptive resolution: the adaptive map's base resolution is 0.05~m. The benchmark therefore also uses a hierarchical traversal that steps over whole octree cells:
+\begin{enumerate}
+    \item At the current point $\mathbf{x}$ on the ray, descend from the root to the deepest existing node containing $\mathbf{x}$.
+    \item If that node is an occupied leaf, report a hit at the current ray parameter $t$.
+    \item Otherwise the cell (an unknown cell where the descent found a missing child, or a free leaf) has a known axis-aligned extent. Compute the exit parameter $t_{\text{exit}} = \min_a (b_a - x_a)/v_a$ over the three faces the ray leaves through, set $t \gets t + t_{\text{exit}} + \varepsilon$ ($\varepsilon = 0.1$~mm), and repeat while $t$ is below the maximum range.
+\end{enumerate}
+The traversal uses the same occupancy semantics as \texttt{castRay(\dots, ignoreUnknown = true)}. Its agreement with \texttt{castRay()} is measured on every map in Section~\ref{sec:rays}.
 
 \newpage
 
 % =========================================================================
 % CHAPTER 5: EXPERIMENTS & BENCHMARKS
 % =========================================================================
-\chapter{Experimental Setup, Empirical Results, and Benchmark Discussion}
+\chapter{Experimental Setup, Results, and Discussion}
 
-\section{Experimental Dataset and Hardware Environment}
-Empirical validation was performed on the MARS-LVIG aerial benchmark dataset:
+\section{Dataset, Trajectory, and Hardware}
 \begin{itemize}
-    \item \textbf{Sequence:} \texttt{HKairport01} active flight trajectory.
-    \item \textbf{Sensor Payload:} Livox Avia solid-state LiDAR (240k pts/sec, 6 scan lines, non-repetitive rosette pattern) and 6-DoF IMU (208.3 Hz).
-    \item \textbf{Telemetry Ingestion:} 201 LiDAR frames and 4,165 IMU frames recorded over 19.998 seconds.
-    \item \textbf{Global Map Dimensions:} $X \in [-30.09\text{ m}, 11.66\text{ m}]$, $Y \in [-26.02\text{ m}, 41.71\text{ m}]$, $Z \in [-41.36\text{ m}, 28.13\text{ m}]$, spanning an overall bounding box of $41.75\text{ m} \times 67.73\text{ m} \times 69.49\text{ m}$ containing \textbf{1,907,061 spatial vertices}.
-    \item \textbf{Computational Hardware:} 48-thread workstation with 128 GB RAM and NVIDIA Ampere GPU acceleration running ROS 2 Jazzy Jalisco on Ubuntu 24.04 LTS.
+    \item \textbf{Sequence:} MARS-LVIG \texttt{HKairport01}, converted slice \texttt{HKairport01\_test5}: 201 LiDAR scans and 4,165 IMU messages (4,366 messages, 19.998~s). The converter intentionally discards the first 169 LiDAR scans of the source bag, which contain invalid start-up returns, together with all IMU messages preceding the first retained scan. Within the retained window no message is dropped, and header timestamps are preserved.
+    \item \textbf{Odometry:} FAST-LIO2 logged 186 state estimates over 18.8~s (trajectory length 37.5~m) and accumulated \textbf{1,907,061 points} into \texttt{scans.pcd}.
+    \item \textbf{Map frame:} \texttt{camera\_init} is the initial IMU frame and is not gravity-aligned. The estimated gravity vector is $(9.81, -0.19, 0.16)$~m/s$^2$, so the X axis is close to vertical: 97.5\% of estimated surface normals are dominated by their X component, and about half of all points lie in a 0.3~m slab at $X \approx 6.3$~m (the ground). The cloud spans $X \in [-30.09, 11.66]$~m (41.75~m, vertical), $Y \in [-26.02, 41.71]$~m (67.73~m) and $Z \in [-41.36, 28.13]$~m (69.49~m).
+    \item \textbf{Hardware:} 2$\times$ Intel Xeon Silver 4510 (48 hardware threads), 125~GB RAM, Ubuntu 24.04, ROS 2 Jazzy. Surface variation uses all threads; all ray-casting timings are single-threaded. No GPU is used.
 \end{itemize}
 
-\section{Multi-Resolution OctoMap Benchmarking}
-Four distinct volumetric occupancy representations were generated from the identical 1.9M-point dataset:
-\begin{enumerate}
-    \item \textbf{Uniform 0.40m:} Coarse baseline representation ($\Delta r = 0.40\text{ m}$).
-    \item \textbf{Uniform 0.20m:} Medium baseline representation ($\Delta r = 0.20\text{ m}$).
-    \item \textbf{Uniform 0.10m:} Fine baseline representation ($\Delta r = 0.10\text{ m}$).
-    \item \textbf{Dynamic Adaptive:} Proposed adaptive resolution octree ($\Delta r \in [0.05\text{ m}, 0.40\text{ m}]$).
-\end{enumerate}
+\section{Evaluated Maps and Protocol}
+Five maps are built from the same cloud. Four are uniform OctoMaps at 0.40, 0.20, 0.10 and 0.05~m (\texttt{pcd\_to\_octomap}: one \texttt{updateNode} hit per point, exported with \texttt{writeBinary()}). The fifth is the adaptive map (Algorithm~\ref{alg:twopass}, 0.05--0.40~m). The 0.05~m uniform map is included because it matches the adaptive map's finest resolution. The earlier naive-expansion prototype is evaluated as a negative control. All metrics are computed by \texttt{scripts/benchmark\_octomap.cpp}; raw console logs and the full JSON results are kept in \texttt{Reports/benchmark/}, and every figure is generated from that JSON.
 
-Table 5.1 provides the comprehensive quantitative benchmark comparison.
+\begin{itemize}
+    \item \textbf{Unsupported leaves:} occupied leaves that contain no input point (false occupancy).
+    \item \textbf{Coverage:} fraction of input points that fall inside an occupied voxel.
+    \item \textbf{Occupied volume:} total volume of occupied leaves.
+    \item \textbf{Chamfer distance:} with $P$ the cloud and $V$ the set of occupied voxel centres, $d_{\text{CD}} = \tfrac{1}{2}\big(\tfrac{1}{|P|}\sum_{p} \min_{v} \|p - v\| + \tfrac{1}{|V|}\sum_{v} \min_{p} \|v - p\|\big)$, estimated on deterministic samples of 20,000 points and 20,000 voxel centres. The first (cloud-to-map) term is also reported separately for \emph{edge} points ($\sigma_n \ge 0.06$, 753,260 points) and \emph{planar} points ($\sigma_n < 0.025$, 783,977 points).
+    \item \textbf{Voxel size at points:} mean edge length of the voxel containing each edge or planar point.
+    \item \textbf{Collision queries:} two deterministic sets of 50,000 rays, each starting at a randomly chosen FAST-LIO2 trajectory pose with 30~m maximum range. \emph{Omnidirectional} rays have directions uniform on the sphere; most leave the scanned volume without a hit. \emph{Surface-directed} rays point at a randomly chosen cloud point 1--30~m from the pose; almost all hit. Each set is cast with \texttt{castRay()} and with the hierarchical traversal; latency is the median of three runs.
+\end{itemize}
+
+\section{Correctness Verification}
+\label{sec:verification}
 
 \begin{table}[H]
     \centering
-    \caption{Quantitative Performance Benchmarks Across Multi-Resolution Octrees}
-    \label{tab:benchmarks}
+    \caption{Occupancy correctness of the naive-expansion prototype and the two-pass adaptive map}
+    \label{tab:verification}
     \vspace{2mm}
-    \begin{tabular}{lcccccc}
+    \small
+    \setlength{\tabcolsep}{4pt}
+    \begin{tabular}{lrr}
         \toprule
-        \textbf{Map Representation} & \textbf{File Size} & \textbf{Total Nodes} & \textbf{Leaf Voxels} & \textbf{Load Time} & \textbf{Raycast Latency} & \textbf{Chamfer Dist.} \\
-        & (KB) & & & (ms) & ($\mu\text{s}$/ray) & (m) \\
+        \textbf{Metric} & \textbf{Naive expansion (prototype)} & \textbf{Two-pass (this work)} \\
         \midrule
-        Uniform 0.40m & 21.7 & 41,343 & 30,299 & 5.27 & 4.36 & 0.1623 \\
-        Uniform 0.20m & 84.3 & 157,247 & 114,165 & 13.34 & 7.98 & 0.0878 \\
-        Uniform 0.10m & 320.9 & 531,026 & 366,772 & 56.87 & 14.59 & 0.0472 \\
-        \textbf{Dynamic Adaptive} & \textbf{334.7} & \textbf{1,370,457} & \textbf{1,199,150} & \textbf{78.02} & \textbf{0.12} & \textbf{0.1890} \\
+        Occupied leaves & 1,199,150 & 312,904 \\
+        Unsupported occupied leaves & 872,179 (72.7\%) & 0 \\
+        Largest occupied voxel & 1,638.4 m & 0.80 m \\
+        Occupied volume & $3.5 \times 10^{10}$ m$^3$ (entire octree) & 1,161.8 m$^3$ \\
+        Ray origins inside occupied voxels & 50,000 / 50,000 & 0 / 50,000 \\
+        Omnidirectional rays reporting a hit & 100\% (mean distance 0.02 m) & 7.4\% (mean distance 19.0 m) \\
+        Point coverage & 100\% & 100\% \\
+        Insertion conflicts & not checked & 0 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Table~\ref{tab:verification} compares both constructions. The prototype's tree fills the entire $3{,}276.8$~m octree volume with occupied cells. Every trajectory pose lies inside an occupied voxel, so every ray terminates in its first cell. The prototype's earlier headline result of $0.12\,\mu$s per ray, reported as a $>120\times$ speed-up, was therefore an artefact of false occupancy, not a property of adaptive resolution. The same defect explains the earlier observation that \texttt{writeBinary()} collapsed the prototype to a handful of nodes: with almost everything occupied, maximum-likelihood pruning merges the tree up to the root.
+
+The two-pass map and all four uniform maps have no unsupported voxels and cover every input point. The occupied voxels of every corrected map lie within the cloud's bounding box, enlarged by at most one voxel, and none of the 100,000 ray origins (drawn from the trajectory poses) falls inside an occupied voxel. Rebuilding the 0.10, 0.20 and 0.40~m uniform maps from \texttt{scans.pcd} reproduced the previously stored files byte for byte.
+
+\section{Storage Footprint}
+
+\begin{table}[H]
+    \centering
+    \caption{Storage and loading cost}
+    \label{tab:storage}
+    \vspace{2mm}
+    \small
+    \setlength{\tabcolsep}{4pt}
+    \begin{tabular}{lrrrrrr}
+        \toprule
+        \textbf{Map} & \textbf{File (KB)} & \textbf{Tree nodes} & \textbf{Occupied leaves} & \textbf{Memory (MB)} & \textbf{Load (ms)} & \textbf{Occ. volume (m$^3$)} \\
+        \midrule
+        Uniform 0.40 m & 21.7 & 41,343 & 30,299 & 1.3 & 2.2 & 2,108.5 \\
+        Uniform 0.20 m & 84.3 & 157,247 & 114,165 & 5.0 & 8.3 & 984.9 \\
+        Uniform 0.10 m & 320.9 & 531,026 & 366,772 & 18.1 & 32.7 & 389.3 \\
+        Uniform 0.05 m & 1,077.3 & 1,388,554 & 837,055 & 54.8 & 99.6 & 109.2 \\
+        \textbf{Adaptive 0.05--0.40 m} & \textbf{337.4} & \textbf{485,603} & \textbf{312,904} & \textbf{18.0} & \textbf{34.2} & \textbf{1,161.8} \\
         \bottomrule
     \end{tabular}
 \end{table}
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.82\textwidth]{Reports/figures/raycast_latency_comparison.png}
-    \caption{Obstacle collision query latency comparison demonstrating $>120\times$ acceleration under Dynamic Adaptive OctoMap.}
+    \includegraphics[width=\textwidth]{Reports/figures/storage_footprint.png}
+    \caption{Binary file size, in-memory tree size and occupied leaf count of each map.}
+    \label{fig:storage}
+\end{figure}
+
+Table~\ref{tab:storage} and Figure~\ref{fig:storage} summarise storage. Compared with the uniform 0.05~m map, which has the same finest resolution, the adaptive map is $3.2\times$ smaller on disk, $3.0\times$ smaller in memory, has $2.7\times$ fewer occupied leaves and loads $2.9\times$ faster. Its footprint is close to the uniform 0.10~m map (337.4 vs.\ 320.9~KB, 18.0 vs.\ 18.1~MB). The price is a larger occupied volume (1,161.8~m$^3$, between the 0.20~m and 0.40~m maps). Planar surfaces far from the trajectory, mainly the ground, are represented by 0.40~m voxels, which inflates them conservatively.
+
+\section{Geometric Fidelity}
+
+\begin{table}[H]
+    \centering
+    \caption{Geometric fidelity (distances in metres)}
+    \label{tab:fidelity}
+    \vspace{2mm}
+    \small
+    \setlength{\tabcolsep}{4pt}
+    \begin{tabular}{lrrrrrr}
+        \toprule
+        \textbf{Map} & \textbf{Chamfer} & \textbf{Cloud$\to$map} & \textbf{Edge pts} & \textbf{Planar pts} & \textbf{Voxel @ edge} & \textbf{Voxel @ planar} \\
+        \midrule
+        Uniform 0.40 m & 0.1626 & 0.1967 & 0.1925 & 0.1986 & 0.457 & 0.411 \\
+        Uniform 0.20 m & 0.0879 & 0.1054 & 0.1182 & 0.0972 & 0.285 & 0.209 \\
+        Uniform 0.10 m & 0.0472 & 0.0539 & 0.0605 & 0.0488 & 0.139 & 0.104 \\
+        Uniform 0.05 m & 0.0240 & 0.0259 & 0.0281 & 0.0242 & 0.064 & 0.050 \\
+        \textbf{Adaptive 0.05--0.40 m} & \textbf{0.0508} & \textbf{0.0699} & \textbf{0.0281} & \textbf{0.1244} & \textbf{0.064} & \textbf{0.279} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+\noindent\textit{Edge pts / Planar pts: cloud-to-map term restricted to that point class. Voxel @ edge / planar: mean edge length of the voxel containing the point. Values above 0.05~m in the 0.05~m column arise where pruning merged eight occupied children.}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{Reports/figures/accuracy_vs_storage.png}
+    \caption{Cloud-to-map distance versus file size, for edge points (left) and planar points (right). The adaptive map reaches the 0.05~m map's accuracy on edges at the 0.10~m map's storage cost.}
+    \label{fig:accuracy}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{Reports/figures/effective_voxel_size.png}
+    \caption{Mean size of the voxel containing edge and planar points. Uniform maps use one size everywhere; the adaptive map resolves edges like the 0.05~m map and planar regions at 0.2--0.4~m.}
+    \label{fig:voxelsize}
+\end{figure}
+
+Table~\ref{tab:fidelity} and Figures~\ref{fig:accuracy} and~\ref{fig:voxelsize} show that the adaptive map behaves as designed. At edge and thin-structure points it is indistinguishable from the uniform 0.05~m map (voxel size 0.064~m and cloud-to-map distance 0.0281~m in both). This is $2.2\times$ finer than the uniform 0.10~m map of equal storage (0.0605~m). On planar points it is deliberately coarse (0.1244~m, between the 0.20~m and 0.40~m maps). Averaged over the whole cloud, its Chamfer distance (0.0508~m) is therefore slightly worse than the uniform 0.10~m map (0.0472~m). The adaptive map does not reconstruct the whole scene more accurately. It moves resolution from planar regions to edges and thin structures, where collision checking needs it.
+
+\section{Collision Query Latency}
+\label{sec:rays}
+
+\begin{table}[H]
+    \centering
+    \caption{Ray-casting latency ($\mu$s per ray, single thread, 50,000 rays per set) and agreement between the two ray casters}
+    \label{tab:rays}
+    \vspace{2mm}
+    \small
+    \setlength{\tabcolsep}{4pt}
+    \begin{tabular}{lrrrrrr}
+        \toprule
+        & \multicolumn{2}{c}{\textbf{Omnidirectional}} & \multicolumn{2}{c}{\textbf{Surface-directed}} & & \\
+        \cmidrule(lr){2-3} \cmidrule(lr){4-5}
+        \textbf{Map} & \textbf{castRay} & \textbf{Hierarchical} & \textbf{castRay} & \textbf{Hierarchical} & \textbf{Hit rate (omni)} & \textbf{Agreement} \\
+        \midrule
+        Uniform 0.40 m & 3.17 & 0.50 & 2.52 & 0.96 & 7.7\% & 99.92\% \\
+        Uniform 0.20 m & 5.57 & 0.50 & 4.67 & 1.11 & 7.4\% & 99.95\% \\
+        Uniform 0.10 m & 9.74 & 0.53 & 8.80 & 1.46 & 7.2\% & 99.99\% \\
+        Uniform 0.05 m & 18.08 & 0.56 & 16.05 & 1.83 & 6.7\% & 99.99\% \\
+        \textbf{Adaptive 0.05--0.40 m} & \textbf{17.03} & \textbf{0.53} & \textbf{15.14} & \textbf{1.37} & \textbf{7.4\%} & \textbf{99.99\%} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+\noindent\textit{Agreement: fraction of rays on which both casters report the same hit/miss outcome (lower of the two ray sets). Where both hit, the median distance difference is at most half a voxel, because \texttt{castRay()} returns the centre of the hit voxel and the hierarchical traversal returns the entry point. Surface-directed rays hit in $>99.9\%$ of cases for every map.}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{Reports/figures/raycast_latency_comparison.png}
+    \caption{Ray-casting latency per map for OctoMap's \texttt{castRay()} and the hierarchical traversal (log scale).}
     \label{fig:raycast_latency}
 \end{figure}
 
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=0.85\textwidth]{Reports/figures/node_count_storage_tradeoff.png}
-    \caption{Octree structural complexity (total nodes) versus binary storage footprint on disk.}
-    \label{fig:node_storage}
-\end{figure}
-
-\section{Analysis of Benchmark Results and Numerical Findings}
-The quantitative evaluations highlight three major findings:
+Three observations follow from Table~\ref{tab:rays} and Figure~\ref{fig:raycast_latency}:
 \begin{enumerate}
-    \item \textbf{Collision Checking Acceleration ($>120\times$ Speedup):} As shown in Figure \ref{fig:raycast_latency}, average raycasting latency on the uniform $0.10\text{ m}$ octree was $14.59\,\mu\text{s}$ per ray. Under the Dynamic Adaptive octree, latency dropped dramatically to \textbf{$0.12\,\mu\text{s}$ per ray} (over $121.6\times$ faster). Because broad open air and planar ground volumes are bounded by coarse octree nodes (depths 13 and 14), raycast traversal algorithms short-circuit empty space without descending 16 depth levels.
-    \item \textbf{High-Fidelity Feature Density with Negligible Storage Increase:} As illustrated in Figure \ref{fig:node_storage}, the dynamic octree maintains \textbf{1,370,457 nodes} (including 758,056 fine $0.05\text{ m}$ leaf voxels along complex edges) within $334.7\text{ KB}$ of binary storage. In comparison, the uniform $0.10\text{ m}$ octree requires $320.9\text{ KB}$ while containing only 531,026 nodes ($2.58\times$ fewer nodes) and lacking $0.05\text{ m}$ resolution.
-    \item \textbf{Balanced Adaptive Depth Allocation:} Table 5.2 and Figure \ref{fig:depth_dist} show the depth distribution of all 1,907,061 points:
-    \begin{itemize}
-        \item \textbf{Depth 13 ($0.40\text{ m}$):} 572,302 points ($30.01\%$) representing distant, flat runway surfaces.
-        \item \textbf{Depth 14 ($0.20\text{ m}$):} 234,735 points ($12.31\%$) representing near-field flat ground.
-        \item \textbf{Depth 15 ($0.10\text{ m}$):} 346,764 points ($18.18\%$) representing building walls and facades.
-        \item \textbf{Depth 16 ($0.05\text{ m}$):} 753,260 points ($39.50\%$) representing high-curvature edges, poles, and cables.
-    \end{itemize}
+    \item \textbf{\texttt{castRay()} gains almost nothing from adaptivity.} Its cost follows the base resolution: the adaptive map (base 0.05~m) costs 17.0 and 15.1~$\mu$s per ray, only about 6\% less than the uniform 0.05~m map. Differences of this size are comparable to the run-to-run variation observed between benchmark runs (up to about 6\%).
+    \item \textbf{Hierarchical traversal is 11--32$\times$ faster than \texttt{castRay()} on the adaptive map} (32$\times$ for omnidirectional rays, 11$\times$ for surface-directed rays). It agrees with \texttt{castRay()} on $\ge 99.92\%$ of rays for every map. The speed-up comes from skipping large unknown cells and applies to every map; omnidirectional rays cost about 0.5~$\mu$s on all of them.
+    \item \textbf{With hierarchical traversal, coarse cells pay off near surfaces.} For surface-directed rays the adaptive map needs 1.37~$\mu$s per ray, 25\% less than the uniform 0.05~m map (1.83~$\mu$s) and comparable to the uniform 0.10~m map (1.46~$\mu$s). Coarse planar voxels leave larger unknown cells around them, so rays approaching the ground cross fewer cells (14.9 vs.\ 16.4 cells per ray).
 \end{enumerate}
+
+\section{Adaptive Depth Distribution}
+\label{sec:depthdist}
 
 \begin{table}[H]
     \centering
-    \caption{Adaptive Depth Classification Distribution on the Reconstructed Map}
+    \caption{Requested depth (policy, Eq.~\ref{eq:policy}), insertion depth (after refinement) and occupied leaves of the written map}
     \label{tab:depth_dist}
     \vspace{2mm}
-    \begin{tabular}{cclrc}
+    \begin{tabular}{ccrrr}
         \toprule
-        \textbf{Tree Depth} & \textbf{Voxel Size} & \textbf{Target Feature Class} & \textbf{Point Count} & \textbf{Percentage} \\
+        \textbf{Depth} & \textbf{Voxel} & \textbf{Requested points} & \textbf{Inserted points} & \textbf{Occupied leaves} \\
         \midrule
-        Depth 13 & 0.40 m & Distant flat runway and ground planes & 572,302 & 30.01 \% \\
-        Depth 14 & 0.20 m & Near-field flat ground and low-slope surfaces & 234,735 & 12.31 \% \\
-        Depth 15 & 0.10 m & Building walls, facades, and moderate boundaries & 346,764 & 18.18 \% \\
-        Depth 16 & 0.05 m & High-curvature edges, utility poles, and cables & 753,260 & 39.50 \% \\
+        12 & 0.80 m & -- & -- & 79 \\
+        13 & 0.40 m & 572,281 (30.0\%) & 394,233 (20.7\%) & 13,768 \\
+        14 & 0.20 m & 234,756 (12.3\%) & 180,426 (9.5\%) & 18,437 \\
+        15 & 0.10 m & 346,764 (18.2\%) & 403,221 (21.1\%) & 65,812 \\
+        16 & 0.05 m & 753,260 (39.5\%) & 929,181 (48.7\%) & 214,808 \\
         \bottomrule
     \end{tabular}
 \end{table}
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.85\textwidth]{Reports/figures/depth_distribution.png}
-    \caption{Point distribution across adaptive octree depth tiers over 1,907,061 spatial vertices.}
+    \includegraphics[width=\textwidth]{Reports/figures/depth_distribution.png}
+    \caption{Left: share of points per depth as requested by the policy and as inserted after neighbourhood refinement. Right: occupied leaves per depth in \texttt{dynamic\_octomap.bt}.}
     \label{fig:depth_dist}
 \end{figure}
 
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=0.80\textwidth]{Reports/figures/chamfer_vs_latency_pareto.png}
-    \caption{Pareto trade-off frontier between surface reconstruction accuracy and collision query latency.}
-    \label{fig:pareto}
-\end{figure}
+Table~\ref{tab:depth_dist} and Figure~\ref{fig:depth_dist} give the resulting distribution. Refinement moves 31\% of the points the policy assigned to 0.40~m (178,048 of 572,281) into finer voxels, because they share a coarse cell with a point that requested finer resolution. The 79 depth-12 leaves come from pruning groups of eight fully occupied 0.40~m voxels. Generating the adaptive map takes about 1.6~s: 0.1~s to load, 0.8~s for surface variation on 48 threads, 0.1~s for trajectory ranges and 0.5~s for the two-pass build.
 
-\section{Automated CI Verification Test Suite}
-An automated test harness was formulated to assert pipeline robustness across node lifecycles and topic Quality-of-Service. Across both uniform and dynamic octree servers, all assertions achieved a \textbf{100\% test pass rate}:
+\section{Automated Verification Suite}
+\texttt{scripts/test\_octomap\_pipeline.py} runs 27 checks, all of which pass:
 \begin{itemize}
-    \item \texttt{/octomap\_binary}: Verified binary payload transmission in frame \texttt{camera\_init}.
-    \item \texttt{/occupied\_cells\_vis\_array}: Verified 17 marker depth layers and multi-resolution voxel streaming.
-    \item \texttt{/projected\_map}: Verified 2D occupancy grid rasterization ($212 \times 341$ cells, 6,352 occupied cells).
+    \item \textbf{Files:} all uniform (0.05--0.40~m) and adaptive map files exist.
+    \item \textbf{Correctness:} for every map in \texttt{benchmark\_results.json}, there are no unsupported voxels, coverage is 100\%, \texttt{castRay()}/hierarchical agreement is $\ge 99.9\%$, and the results are newer than the map files.
+    \item \textbf{Live ROS 2 serving (uniform 0.20~m):} \texttt{/octomap\_binary} 86,164 bytes at resolution 0.20~m in frame \texttt{camera\_init}; \texttt{/occupied\_cells\_vis\_array} 114,165 voxels; \texttt{/projected\_map} $212 \times 341$ cells.
+    \item \textbf{Live ROS 2 serving (adaptive):} \texttt{/octomap\_binary} 345,398 bytes at base resolution 0.05~m; \texttt{/occupied\_cells\_vis\_array} 312,904 voxels in 17 depth layers, equal to the map's occupied leaf count; \texttt{/projected\_map} $846 \times 1369$ cells.
+\end{itemize}
+Each launched server runs in its own process group and is stopped completely after its test, so a later test cannot receive latched messages from an earlier server. The resolution and voxel count are asserted against the expected map. Note that \texttt{octomap\_server} projects along the Z axis; in this dataset Z is horizontal, so \texttt{/projected\_map} is a side view rather than a ground plan.
+
+\section{Limitations}
+\begin{itemize}
+    \item \textbf{No free space:} the maps contain occupied and unknown space only (Section~\ref{sec:semantics}).
+    \item \textbf{Hand-set thresholds:} the $\sigma_n$ and range thresholds were not optimised. 39.5\% of points request the finest depth, partly because range noise ($\pm 2$~cm) on a dense cloud raises $\sigma_n$ on surfaces that are geometrically planar.
+    \item \textbf{Planar inflation:} coarse ground voxels increase the occupied volume, which matters for close-range ground interaction such as landing.
+    \item \textbf{Range proxy:} range is measured to the nearest trajectory pose, not the pose that captured each point.
+    \item \textbf{Single sequence:} all results come from one 20~s slice of one dataset; timings are from one workstation.
 \end{itemize}
 
 \newpage
@@ -471,38 +644,73 @@ An automated test harness was formulated to assert pipeline robustness across no
 % =========================================================================
 \chapter{Hardware Deployment Architecture and Conclusions}
 
-\section{Physical UAV Avionics Architecture}
-The software framework is designed for deployment on a physical custom-built multirotor UAV platform. The onboard avionics suite comprises:
+\section{Planned UAV Avionics Architecture}
+Field deployment is outside the scope of this report. The planned onboard configuration for the team's custom multirotor is:
 \begin{enumerate}
     \item \textbf{Primary Sensor:} Livox Avia LiDAR streaming raw point measurements over an isolated 100BASE-TX Ethernet connection via UDP.
     \item \textbf{Flight Controller:} Pixhawk 6C running PX4 Autopilot firmware, communicating bidirectionally with the companion computer via UART at 921,600 baud using the MAVLink protocol.
     \item \textbf{Companion Computer:} NVIDIA Jetson Orin Nano (6-core ARM Cortex-A78AE CPU, 1024-core Ampere GPU, 8GB unified memory) operating under a 15W power constraint.
 \end{enumerate}
 
-To ensure closed-loop flight stability at flight velocities up to $5\text{ m/s}$, end-to-end perception latency is constrained below $50\text{ ms}$:
+Design targets for that platform, not yet validated on hardware, are an end-to-end perception latency below $50\text{ ms}$ at flight speeds up to $5\text{ m/s}$:
 \begin{itemize}
-    \item Spatial point filtering by a factor of 3 bounds point throughput to $\approx 80,000$ points/second.
-    \item IEKF maximum iterations are clamped to 2, ensuring state updates complete in under $25\text{ ms}$.
-    \item The high-speed LIO thread guarantees local obstacle bounds at $10\text{ Hz}$, while the dynamic octree thread publishes global volumetric updates asynchronously at $2\text{ Hz}$.
-    \item Motor vibrations ($150\text{ Hz}$ to $250\text{ Hz}$) are mitigated using silicone elastomer mounts (durometer 30A) and digital low-pass Butterworth filters ($50\text{ Hz}$ cutoff).
+    \item Point decimation by a factor of 3 (\texttt{point\_filter\_num}), which reduces the Avia's 240,000 points/s to about 80,000 points/s.
+    \item A reduced IEKF iteration limit to keep each state update within the 100~ms scan period with margin.
+    \item LIO at 10~Hz, with the adaptive map rebuilt asynchronously at a lower rate. The current offline build of the full map takes about 1.6~s on the workstation, so an incremental variant is required for on-board use.
+    \item Vibration isolation of the LiDAR/IMU mount and low-pass filtering of accelerometer data.
 \end{itemize}
 
 \section{Conclusions and Summary of Contributions}
-This Bachelor of Technology project has established an advanced 3D environment reconstruction pipeline from aerial LiDAR telemetry to dynamic voxelized occupancy representations:
+This project established a reconstruction pipeline from aerial LiDAR telemetry to adaptive-resolution occupancy octrees:
 \begin{enumerate}
-    \item \textbf{Data Translation Layer:} Eliminated binary serialization and QoS incompatibilities, migrating legacy multi-channel Livox logs to ROS 2 Jazzy with zero packet loss across 4,366 messages.
-    \item \textbf{Direct LiDAR-Inertial Odometry:} Deployed and tuned FAST-LIO2 under a non-privileged ROS 2 environment, achieving stable motion-compensated registration and accumulating a dense global point cloud of 1,907,061 points across the MARS-LVIG \texttt{HKairport01} dataset.
-    \item \textbf{Dynamic Voxel Gridding:} Formulated a multi-resolution depth selection policy driven by 3D covariance curvature tensors ($\sigma_n$) and range scaling. Evaluated against static baselines, the dynamic octree achieved an extraordinary raycasting latency of $0.12\,\mu\text{s}$ per ray ($>120\times$ faster than uniform fine grids), while packing 1.37 million nodes into a compact 334.7 KB binary archive.
-    \item \textbf{Automated Test Verification:} Formulated automated continuous-integration verification scripts, validating multi-resolution file integrity and live ROS 2 topic delivery with a 100\% test pass rate.
+    \item \textbf{Data translation:} Legacy ROS 1 Livox logs were converted to ROS 2 Jazzy (201 LiDAR scans and 4,165 IMU messages in the retained window, after intentionally discarding 169 invalid start-up scans).
+    \item \textbf{LiDAR-inertial odometry:} FAST-LIO2 was deployed under ROS 2 and produced a 186-pose trajectory and a 1,907,061-point map of the MARS-LVIG \texttt{HKairport01} sequence.
+    \item \textbf{Dynamic Voxel Gridding:} An adaptive octree with per-point depth from surface variation and trajectory range was implemented with an order-independent two-pass construction that never expands an existing leaf. Verification found zero unsupported voxels and full coverage. It also showed that a naive-expansion prototype fills the octree with false occupancy, so the $>120\times$ ray-casting speed-up measured on that prototype was an artefact and is not claimed. The corrected map matches a uniform 0.05~m map on edge and thin-structure points with $3.2\times$ less storage. Planar regions are intentionally coarser.
+    \item \textbf{Collision queries:} OctoMap's base-resolution \texttt{castRay()} gains little from adaptivity. A hierarchical traversal, validated against it, is 11--32$\times$ faster and benefits from the adaptive map's coarse cells near surfaces (25\% lower latency than the uniform 0.05~m map for surface-directed rays).
+    \item \textbf{Verification:} The automated test suite checks map correctness and live ROS 2 serving of both the uniform and the adaptive map, with test servers fully isolated from one another.
 \end{enumerate}
 
 \section{Future Research Directions}
-Building upon the verified software framework, future research will pursue:
 \begin{itemize}
-    \item \textbf{CUDA GPU Acceleration:} Offloading local covariance eigensolvers from OpenMP CPU threads to CUDA cores on the Jetson Orin platform to enable real-time ($10\text{ Hz}$) continuous dynamic voxelization during active flight.
-    \item \textbf{Field Flight Validation:} Integrating the perception payload onto the research team's physical multirotor drone for field flight validation across outdoor campus environments at IIT Kharagpur.
-    \item \textbf{Closed-Loop Trajectory Planning:} Interfacing the dynamic occupancy octree with minimum-snap spline trajectory planners (such as EGO-Planner) to demonstrate real-time autonomous navigation and hazard avoidance among thin wires and complex obstacles.
+    \item \textbf{Free-space mapping:} Save per-scan clouds with their poses and insert them with ray casting, so that the adaptive map distinguishes free from unknown space.
+    \item \textbf{Threshold selection:} Choose the $\sigma_n$ and range thresholds systematically (e.g.\ by a storage/accuracy sweep) and evaluate on more sequences.
+    \item \textbf{Incremental construction:} Maintain refinement sets incrementally so the adaptive map can be updated on board at scan rate.
+    \item \textbf{Field validation and planning:} Integrate the pipeline on the team's UAV and couple the adaptive map with a trajectory planner using the hierarchical collision checker.
 \end{itemize}
+
+\newpage
+
+% =========================================================================
+% APPENDIX
+% =========================================================================
+\appendix
+\chapter{Reproducing the Results}
+All results in Chapter~5 can be regenerated from the repository root:
+{\small
+\begin{verbatim}
+scripts/build_octomap_tools.sh
+PCD=src/FAST_LIO_ROS2/PCD/scans.pcd
+TRAJ=src/FAST_LIO_ROS2/Log/mat_pre.txt
+for r in 0.4 0.2 0.1 0.05; do
+  scripts/pcd_to_octomap $PCD maps/uav_octomap_${r}m.bt $r
+done
+scripts/dynamic_voxel_octomap $PCD maps/dynamic_octomap.bt --traj $TRAJ \
+    --stats Reports/benchmark/dynamic_octomap_stats.json
+scripts/benchmark_octomap --pcd $PCD --traj $TRAJ \
+    --json Reports/benchmark/benchmark_results.json \
+    --md Reports/benchmark_octomap_results.md \
+    "Uniform 0.40 m=maps/uav_octomap_0.4m.bt" \
+    "Uniform 0.20 m=maps/uav_octomap_0.2m.bt" \
+    "Uniform 0.10 m=maps/uav_octomap_0.1m.bt" \
+    "Uniform 0.05 m=maps/uav_octomap_0.05m.bt" \
+    "Dynamic Adaptive=maps/dynamic_octomap.bt" \
+    "Legacy naive-expand=maps/legacy/dynamic_octomap_naive_expand.bt"
+venv/bin/python scripts/generate_plots.py
+source /opt/ros/jazzy/setup.bash && source install/setup.bash
+python3 scripts/test_octomap_pipeline.py
+\end{verbatim}
+}
+Console logs of the runs reported here are stored in \texttt{Reports/benchmark/logs/}.
 
 \newpage
 
@@ -537,13 +745,13 @@ C.~Qin, H.~Ye, C.~E.~Pranata, J.~Han, S.~Zhang, and M.~Liu, ``LINS: A Lidar-Iner
 T.~Shan, B.~Englot, D.~Drew, and R.~Gould, ``LIO-SAM: Tightly-coupled Lidar Inertial Odometry via Smoothing and Mapping,'' in \textit{IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)}, pp.~5135--5142, 2020.
 
 \bibitem{vespa2018efficient}
-E.~Vespa, N.~Nikolov, M.~Grimmett, L.~Valgaerts, and S.~Leutenegger, ``Efficient Octree-Based Volumetric SLAM Supporting Dynamic Resolution Updates,'' \textit{IEEE Robotics and Automation Letters}, vol.~3, no.~2, pp.~1162--1169, 2018.
+E.~Vespa, N.~Nikolov, M.~Grimm, L.~Nardi, P.~H.~J.~Kelly, and S.~Leutenegger, ``Efficient Octree-Based Volumetric SLAM Supporting Signed-Distance and Occupancy Mapping,'' \textit{IEEE Robotics and Automation Letters}, vol.~3, no.~2, pp.~1144--1151, 2018.
 
-\bibitem{schaupp2021adaptive}
-L.~Schaupp, M.~Kaestner, and R.~Siegwart, ``Adaptive Resolution Occupancy Mapping for Autonomous UAV Exploration,'' in \textit{IEEE International Conference on Robotics and Automation (ICRA)}, pp.~3120--3127, 2021.
+\bibitem{funk2021multires}
+N.~Funk, J.~Tarrio, S.~Papatheodorou, M.~Popovi{\'c}, P.~F.~Alcantarilla, and S.~Leutenegger, ``Multi-Resolution 3D Mapping With Explicit Free Space Representation for Fast and Accurate Mobile Robot Motion Planning,'' \textit{IEEE Robotics and Automation Letters}, vol.~6, no.~2, pp.~3553--3560, 2021.
 
 \bibitem{forster2016manifold}
-C.~Forster, L.~Carlone, F.~Dellaert, and D.~Scaramuzza, ``On-Manifold Preintegration for Real-Time Visual--Inertial Odometry,'' \textit{IEEE Transactions on Robotics}, vol.~33, no.~1, pp.~1--21, 2016.
+C.~Forster, L.~Carlone, F.~Dellaert, and D.~Scaramuzza, ``On-Manifold Preintegration for Real-Time Visual--Inertial Odometry,'' \textit{IEEE Transactions on Robotics}, vol.~33, no.~1, pp.~1--21, 2017.
 
 \bibitem{sola2017micro}
 J.~Sol{\`a}, J.~Deray, and D.~Atchuthan, ``A Micro Lie Theory for State Estimation in Robotics,'' \textit{arXiv preprint arXiv:1812.01537}, 2018.
@@ -551,29 +759,11 @@ J.~Sol{\`a}, J.~Deray, and D.~Atchuthan, ``A Micro Lie Theory for State Estimati
 \bibitem{rusu2011pcl}
 R.~B.~Rusu and S.~Cousins, ``3D is here: Point Cloud Library (PCL),'' in \textit{IEEE International Conference on Robotics and Automation (ICRA)}, pp.~1--4, 2011.
 
-\bibitem{zhou2018open3d}
-Q.-Y.~Zhou, J.~Park, and V.~Koltun, ``Open3D: A Modern Library for 3D Data Processing,'' \textit{arXiv preprint arXiv:1801.09847}, 2018.
-
-\bibitem{maciel2021ros2}
-P.~Maciel, F.~Silva, and A.~Neves, ``Evaluating ROS 2 Communication Performance for Real-Time Robotic Systems,'' \textit{Sensors}, vol.~21, no.~18, p.~6152, 2021.
-
-\bibitem{kazerouni2022survey}
-A.~Kazerouni, L.~Fitzgerald, G.~Dooly, and D.~Toal, ``A Survey of State-of-the-Art on SLAM for Mobile Aerial Robotics,'' \textit{Robotics and Autonomous Systems}, vol.~153, p.~104101, 2022.
-
-\bibitem{loianno2020special}
-G.~Loianno, D.~Scaramuzza, and V.~Kumar, ``Special Issue on Autonomous Aerial Robotics,'' \textit{Journal of Field Robotics}, vol.~37, no.~6, pp.~907--909, 2020.
-
 \bibitem{he2023point}
 D.~He, W.~Xu, N.~Chen, F.~Kong, and F.~Zhang, ``Point-LIO: Robust High-Bandwidth Light Detection and Ranging Inertial Odometry,'' \textit{IEEE Robotics and Automation Letters}, vol.~8, no.~8, pp.~4751--4758, 2023.
 
 \bibitem{lin2022r3live}
 J.~Lin and F.~Zhang, ``R3LIVE: A Robust, Real-time, RGB-colored, LiDAR-Inertial-Visual tightly-coupled state Estimation and mapping package,'' in \textit{IEEE International Conference on Robotics and Automation (ICRA)}, pp.~10672--10678, 2022.
-
-\bibitem{yang2022autonomous}
-T.~Yang, P.~Li, and H.~Zhang, ``Autonomous Exploration and Mapping for Micro-Aerial Vehicles: A Survey,'' \textit{Autonomous Robots}, vol.~46, no.~4, pp.~487--512, 2022.
-
-\bibitem{rublee2011orb}
-E.~Rublee, V.~Rabaud, K.~Konolige, and G.~Bradski, ``ORB: An Efficient Alternative to SIFT or SURF,'' in \textit{IEEE International Conference on Computer Vision (ICCV)}, pp.~2564--2571, 2011.
 
 \end{thebibliography}
 

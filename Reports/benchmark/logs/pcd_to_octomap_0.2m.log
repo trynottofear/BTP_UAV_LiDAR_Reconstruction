@@ -1,0 +1,19 @@
+========================================
+  PCD to OctoMap Converter
+  Input:      src/FAST_LIO_ROS2/PCD/scans.pcd
+  Output:     maps/uav_octomap_0.2m.bt
+  Resolution: 0.2 m
+========================================
+[INFO] Successfully loaded 1907061 points from PCD.
+[INFO] Integrated 1907061 valid 3D points.
+[INFO] Updating inner occupancy...
+[INFO] Tree depth: 16
+[INFO] Total tree nodes: 164839
+[INFO] Total leaf nodes: 120808
+[INFO] OctoMap Metric Bounding Box:
+       X: [-30.2 to 11.8] m
+       Y: [-26.2 to 41.8] m
+       Z: [-41.4 to 28.2] m
+[INFO] Writing compact binary OcTree (.bt)...
+Writing 157247 nodes to output stream... done.
+[SUCCESS] Saved OctoMap to: maps/uav_octomap_0.2m.bt

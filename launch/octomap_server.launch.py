@@ -22,8 +22,8 @@ def launch_setup(context, *args, **kwargs):
         dynamic_path = os.path.join(workspace_dir, 'maps', 'dynamic_octomap.bt')
         if os.path.exists(dynamic_path):
             final_map_path = dynamic_path
-        if resolution_val.lower() in ('dynamic', 'adaptive'):
-            resolution_val = '0.05'
+        # The adaptive map is built on a 0.05 m base grid; its leaves span 0.05-0.80 m.
+        resolution_val = '0.05'
     elif octomap_path_val.lower() in ('auto', 'default'):
         if resolution_val.lower() in ('dynamic', 'adaptive'):
             final_map_path = os.path.join(workspace_dir, 'maps', 'dynamic_octomap.bt')

@@ -1,0 +1,16 @@
+{
+  "input_points": 1907061,
+  "finite_points": 1907061,
+  "trajectory": "src/FAST_LIO_ROS2/Log/mat_pre.txt",
+  "trajectory_poses": 186,
+  "base_resolution": 0.05,
+  "d_min": 13, "d_max": 16, "k": 25,
+  "requested_depth_points": {"13": 572281, "14": 234756, "15": 346764, "16": 753260},
+  "insertion_depth_points": {"13": 394233, "14": 180426, "15": 403221, "16": 929181},
+  "occupied_leaf_depths": {"12": 79, "13": 13768, "14": 18437, "15": 65812, "16": 214808},
+  "class_points": {"edge": 753260, "moderate_far": 23060, "moderate_near": 346764, "planar_far": 572281, "planar_near": 211696},
+  "tree_nodes": 485603,
+  "occupied_leaves": 312904,
+  "conflicts": 0,
+  "timing_s": {"load": 0.110874, "curvature": 0.814241, "build": 0.53557}
+}
