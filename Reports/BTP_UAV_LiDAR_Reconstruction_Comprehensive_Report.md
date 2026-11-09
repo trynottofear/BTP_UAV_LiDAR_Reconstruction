@@ -1,16 +1,20 @@
-# BTP-I Comprehensive Technical Report: 3D Environment Reconstruction Using UAV LiDAR Data
+# BTP-I Technical Report: 3D Environment Reconstruction Using UAV LiDAR Data
 
 ---
 
-**Project Title:** 3D Environment Reconstruction using UAV LiDAR Data  
-**Degree / Academic Level:** Bachelor of Technology Project (BTP-I)  
-**Academic Session:** Autumn Semester 2026–27  
-**Department:** Department of Industrial and Systems Engineering  
-**Institution:** Indian Institute of Technology Kharagpur (IIT KGP)  
-**Student Name:** Shaurya Baranwal (Roll No.: 23IM10052)  
-**Project Supervisor:** Prof. Subhajit Sidhanta  
-**Code Repository:** `/home/shaurya/BTP_UAV_LiDAR_Reconstruction`  
-**Target Environment:** ROS 2 Jazzy Jalisco (Ubuntu 24.04 LTS / Linux x86_64)  
+**Project Title:** 3D Environment Reconstruction using UAV LiDAR Data
+**Degree / Academic Level:** Bachelor of Technology Project (BTP-I)
+**Academic Session:** Autumn Semester 2026–27
+**Department:** Department of Industrial and Systems Engineering
+**Institution:** Indian Institute of Technology Kharagpur (IIT KGP)
+**Student Name:** Shaurya Baranwal (Roll No.: 23IM10052)
+**Project Supervisor:** Prof. Subhajit Sidhanta
+**Code Repository:** `/home/shaurya/BTP_UAV_LiDAR_Reconstruction`
+**Target Environment:** ROS 2 Jazzy Jalisco (Ubuntu 24.04 LTS / Linux x86_64)
+
+**Scope:** raw UAV LiDAR-IMU logs → ROS 2 → FAST-LIO2 odometry and map → uniform OctoMaps → **Dynamic Voxel Gridding (adaptive-resolution OctoMap)**, with benchmarking and verification. Terrain modelling and field flights are outside the scope of this project phase.
+
+All numbers in Sections 6–9 are produced by the scripts in this repository; raw logs and JSON results are in [`Reports/benchmark/`](benchmark/).
 
 ---
 
@@ -18,73 +22,81 @@
 1. [Executive Summary](#1-executive-summary)
 2. [End-to-End System Architecture](#2-end-to-end-system-architecture)
 3. [Sensor Specifications & Experimental Dataset](#3-sensor-specifications--experimental-dataset)
-4. [Data Ingestion & ROS 1 to ROS 2 Migration Pipeline](#4-data-ingestion--ros-1-to-ros-2-migration-pipeline)
-5. [State Estimation & Odometry: FAST-LIO2 Mathematical Framework](#5-state-estimation--odometry-fast-lio2-mathematical-framework)
-6. [Global Map Accumulation & Volumetric OctoMap Representation](#6-global-map-accumulation--volumetric-octomap-representation)
-7. [ROS 2 Runtime Infrastructure, Visualization & Verification](#7-ros-2-runtime-infrastructure-visualization--verification)
-8. [Current Project Status & Research Gap Analysis](#8-current-project-status--research-gap-analysis)
-9. [Detailed Technical Plan: Dynamic / Adaptive Voxel Gridding](#9-detailed-technical-plan-dynamic--adaptive-voxel-gridding)
-10. [Detailed Technical Plan: 3D Terrain Surface Modeling & Ground Extraction](#10-detailed-technical-plan-3d-terrain-surface-modeling--ground-extraction)
-11. [Physical UAV Hardware Deployment Roadmap](#11-physical-uav-hardware-deployment-roadmap)
-12. [Summary Table of Artifacts, Scripts, and Configurations](#12-summary-table-of-artifacts-scripts-and-configurations)
+4. [Data Ingestion & ROS 1 to ROS 2 Migration](#4-data-ingestion--ros-1-to-ros-2-migration)
+5. [State Estimation & Odometry: FAST-LIO2](#5-state-estimation--odometry-fast-lio2)
+6. [Uniform OctoMap Representation](#6-uniform-octomap-representation)
+7. [Dynamic Voxel Gridding: Method](#7-dynamic-voxel-gridding-method)
+8. [Dynamic Voxel Gridding: Results](#8-dynamic-voxel-gridding-results)
+9. [ROS 2 Runtime Infrastructure & Verification](#9-ros-2-runtime-infrastructure--verification)
+10. [Project Status & Limitations](#10-project-status--limitations)
+11. [Reproducing the Results](#11-reproducing-the-results)
+12. [Summary Table of Artifacts](#12-summary-table-of-artifacts)
 
 ---
 
 ## 1. Executive Summary
 
-Unmanned Aerial Vehicles (UAVs) equipped with Light Detection and Ranging (LiDAR) sensors enable high-precision, rapid spatial digitisation of large-scale, complex environments. High-fidelity 3D reconstruction forms the backbone of autonomous aerial navigation, obstacle avoidance, infrastructure monitoring, and digital elevation modeling (DEM). However, transitioning from raw high-frequency sensor measurements to memory-efficient, kinematically consistent volumetric representations involves severe challenges:
-1. **Sensor Non-Uniformity & Massive Throughput:** Solid-state non-repetitive LiDARs (e.g., Livox Avia) produce tens of thousands of spatial points per second whose density diminishes quadratically with range ($1/r^2$).
-2. **Aggressive Flight Dynamics:** UAV maneuvers induce high rotational velocities and accelerations, requiring tightly-coupled inertial compensation to prevent severe point cloud distortion and drift.
-3. **Memory & Computational Bottlenecks:** Uniform voxel grids fail to scale over large spatial extents; uniform fine resolutions ($0.05\text{ m}$) cause exponential memory growth ($\mathcal{O}(N^3)$), while coarse resolutions ($0.4\text{ m}$) blur safety-critical obstacles (e.g., power cables, branches).
+UAVs carrying LiDAR can digitise large environments quickly, but turning a high-rate, non-uniform solid-state LiDAR stream into a compact, query-efficient map is hard:
+1. **Non-uniform sampling:** the Livox Avia's non-repetitive pattern and range-dependent point density produce dense near-field and sparse far-field returns.
+2. **Aggressive motion:** intra-scan motion must be compensated with tightly-coupled inertial estimation.
+3. **Uniform voxel grids scale badly:** a fine grid (0.05 m) is large everywhere, while a coarse grid (0.40 m) merges thin structures into large voxels.
 
-### Current Completed Achievements
-- Built an automated data translation and deserialization pipeline migrating legacy ROS 1 Livox custom packets into standardized **ROS 2 Jazzy** `livox_ros_driver2/msg/CustomMsg` format with zero packet loss.
-- Deployed and tuned **FAST-LIO2** (Iterated Extended Kalman Filter with incremental KD-Tree) under ROS 2, generating a kinematically consistent global point cloud containing **1,907,061 points** (`scans.pcd`, 59 MB).
-- Implemented high-performance C++ voxelization (`pcd_to_octomap.cpp`) converting point clouds into multi-resolution OctoMaps ($0.1\text{ m}$, $0.2\text{ m}$, $0.4\text{ m}$).
-- Engineered a modular ROS 2 launch infrastructure (`octomap_server.launch.py`), parameterized latched PCD publisher (`pcd_publisher.py`), verified RViz2 configuration (`configs/octomap.rviz`), and developed an automated end-to-end verification test suite (`scripts/test_octomap_pipeline.py`) passing with 100% success.
+### Completed work
+- **ROS 1 → ROS 2 conversion** of MARS-LVIG Livox logs (`scripts/convert_mars_bag.py`). The 20 s test slice holds 201 LiDAR scans and 4,165 IMU messages; the first 169 scans of the source bag (invalid start-up returns) are intentionally discarded.
+- **FAST-LIO2 under ROS 2 Jazzy**, producing a 186-pose trajectory and an accumulated map of **1,907,061 points** (`scans.pcd`, 59 MB).
+- **Uniform OctoMaps** at 0.05, 0.10, 0.20 and 0.40 m (`scripts/pcd_to_octomap.cpp`).
+- **Dynamic Voxel Gridding** (`scripts/dynamic_voxel_octomap.cpp`): per-point octree depth from surface variation σ_n and range to the trajectory, built by an **order-independent two-pass construction** that never expands an existing leaf.
+- **Benchmark & verification** (`scripts/benchmark_octomap.cpp`): false-occupancy check, coverage, Chamfer distance, per-class voxel size, and ray casting with OctoMap's `castRay()` and a **hierarchical ray traversal**.
+- **ROS 2 serving and automated tests** (`launch/octomap_server.launch.py`, `scripts/test_octomap_pipeline.py`, 27 checks passing).
 
-### Remaining Core Research Milestones
-To finalize this BTP research, two primary algorithmic contributions remain:
-1. **Dynamic / Adaptive Voxel Gridding:** Implementing distance- and entropy-driven octree resolution scaling to replace uniform voxelization, optimizing volumetric density and raycasting efficiency.
-2. **3D Terrain Surface Modeling / Ground Extraction:** Developing ground-filtering algorithms (Cloth Simulation Filter / Patchwork++) to segregate terrain from above-ground structures, followed by 2.5D Digital Elevation Model (DEM) and 3D surface mesh generation.
-3. **Physical UAV Drone Hardware Deployment:** Final flight validation on the team's custom drone platform.
+### Key results (adaptive map vs uniform 0.05 m map, same finest resolution)
+| Metric | Uniform 0.05 m | Adaptive 0.05–0.40 m |
+| :--- | ---: | ---: |
+| Occupied voxels without a LiDAR point | 0 | 0 |
+| Points inside an occupied voxel | 100 % | 100 % |
+| Binary file | 1,077.3 KB | **337.4 KB** (3.2× smaller) |
+| In-memory tree | 54.8 MB | **18.0 MB** (3.0× smaller) |
+| Cloud-to-map distance, edge points | 0.0281 m | **0.0281 m** |
+| Cloud-to-map distance, planar points | 0.0242 m | 0.1244 m (deliberately coarser) |
+| `castRay()`, omnidirectional rays | 18.08 µs | 17.03 µs |
+| Hierarchical traversal, surface-directed rays | 1.83 µs | **1.37 µs** |
+
+> **Correction of an earlier result.** An earlier prototype of the adaptive map, built by naive depth-targeted insertion with OctoMap's `expandNode()`, reported 0.12 µs per ray and a ">120× speed-up". Verification showed that prototype was **falsely occupied across the entire 3.3 km octree volume** (72.7 % of its occupied leaves contained no LiDAR point, and every ray started inside an occupied voxel). The speed-up was an artefact and is withdrawn; see [Section 8.1](#81-correctness-verification).
 
 ---
 
 ## 2. End-to-End System Architecture
 
-The project architecture is structured into four sequential stages: Ingestion, Odometry & Mapping, Spatial Discretization, and Post-Processing & Downstream Analysis.
-
 ```mermaid
 flowchart TD
-    subgraph S1["Stage 1: Ingestion & Serialization"]
-        A["MARS-LVIG Raw Bag (ROS 1)"] -->|"convert_mars_bag.py"| B["Standardized ROS 2 Bag (SQLite3/CDR)"]
-        B -->|"/livox/lidar (CustomMsg)"| C["ROS 2 Messaging Bus"]
+    subgraph S1["Stage 1: Ingestion"]
+        A["MARS-LVIG raw bag (ROS 1)"] -->|"convert_mars_bag.py"| B["ROS 2 bag (SQLite3 / CDR)"]
+        B -->|"/livox/lidar (CustomMsg)"| C["ROS 2 messaging"]
         B -->|"/livox/imu (sensor_msgs/Imu)"| C
     end
 
-    subgraph S2["Stage 2: Odometry & State Estimation"]
-        C --> D["FAST-LIO2 Node"]
-        D -->|"IEKF on SO(3) x R^15"| E["Trajectory & State Estimation"]
-        D -->|"ikd-Tree Registration"| F["Motion-Compensated Cloud"]
-        F --> G["Global Accumulated Map (scans.pcd: 1.9M pts)"]
+    subgraph S2["Stage 2: Odometry & Mapping"]
+        C --> D["FAST-LIO2 (IEKF + ikd-Tree)"]
+        D --> E["Trajectory (Log/mat_pre.txt, 186 poses)"]
+        D --> G["Accumulated map (scans.pcd, 1.9M points)"]
     end
 
-    subgraph S3["Stage 3: Spatial Discretization & OctoMap"]
-        G --> H["pcd_to_octomap (C++ converter)"]
-        H --> I["uav_octomap_0.1m.bt / 0.2m.bt / 0.4m.bt"]
-        I --> J["octomap_server Node"]
-        J -->|"/occupied_cells_vis_array"| K["RViz2 Visualization"]
-        J -->|"/projected_map"| K
+    subgraph S3["Stage 3: Volumetric Maps"]
+        G --> H["pcd_to_octomap"]
+        H --> I["Uniform OctoMaps 0.05 / 0.10 / 0.20 / 0.40 m"]
+        G --> L["dynamic_voxel_octomap (two-pass)"]
+        E --> L
+        L --> O["Adaptive OctoMap 0.05-0.40 m"]
     end
 
-    subgraph S4["Stage 4: Core Research Extensions (Upcoming)"]
-        G -.-> L["Dynamic Voxel Gridding (Adaptive Resolution)"]
-        G -.-> M["Ground Extraction (CSF / Patchwork++)"]
-        M -.-> N["2.5D DEM & Triangulated Surface Mesh"]
-        L -.-> O["Multi-Resolution OctoMap Engine"]
-        N -.-> P["UAV Path Planning & Terrain Following"]
-        O -.-> P
+    subgraph S4["Stage 4: Evaluation & Serving"]
+        I --> Q["benchmark_octomap (verification, fidelity, ray casting)"]
+        O --> Q
+        G --> Q
+        E --> Q
+        Q --> R["benchmark_results.json -> generate_plots.py -> figures"]
+        I --> J["octomap_server -> RViz2"]
+        O --> J
     end
 ```
 
@@ -92,507 +104,382 @@ flowchart TD
 
 ## 3. Sensor Specifications & Experimental Dataset
 
-### 3.1 Sensor Suite: Livox Avia Solid-State LiDAR & 6-DoF IMU
-The primary perception sensor utilized in this study is the **Livox Avia**, a high-performance solid-state LiDAR designed specifically for UAV mapping.
+### 3.1 Livox Avia LiDAR with built-in IMU
 
-| Parameter | Livox Avia Specification | Operational Significance |
+| Parameter | Livox Avia (manufacturer specification) |
+| :--- | :--- |
+| Laser wavelength | 905 nm, Class 1 eye-safe |
+| Field of view | 70.4° × 77.2° (non-repetitive scanning) |
+| Scanning pattern | Non-repetitive; coverage increases with integration time |
+| Point rate | 240,000 points/s (first return) |
+| Range precision | 2 cm (1σ at 20 m) |
+| Angular precision | < 0.05° |
+| Detection range | 450 m at 80 % reflectivity, 190 m at 10 % reflectivity |
+| Built-in IMU | 6-axis; ≈208 Hz in this dataset |
+
+**LiDAR→IMU extrinsics** (`avia.yaml`, held fixed: `extrinsic_est_en: false`):
+
+$$\mathbf{t}_I^L = \begin{bmatrix} 0.04165 & 0.02326 & -0.02840 \end{bmatrix}^T \text{ m}, \quad \mathbf{R}_I^L = \mathbf{I}_{3 \times 3}$$
+
+### 3.2 Dataset: MARS-LVIG `HKairport01`
+- **Full sequence:** ~19 GB of ROS 1 bags.
+- **Converted test slices** (`datasets/`): `HKairport01_test3` (sanity check), `HKairport01_test4`, and **`HKairport01_test5`**, the 20 s slice used for all results.
+
+#### `HKairport01_test5` (from `metadata.yaml`)
+- **Duration:** 19.998 s; **messages:** 4,366.
+- **`/livox/lidar`:** 201 messages (≈10 Hz), `livox_ros_driver2/msg/CustomMsg`.
+- **`/livox/imu`:** 4,165 messages (≈208 Hz), `sensor_msgs/msg/Imu`.
+- **Storage:** SQLite3 (`.db3`), CDR serialisation.
+
+---
+
+## 4. Data Ingestion & ROS 1 to ROS 2 Migration
+
+### 4.1 Problems
+1. **Custom message type:** Livox ROS 1 `CustomMsg`/`CustomPoint` messages must be re-serialised with the ROS 2 `livox_ros_driver2` definitions.
+2. **Invalid start-up scans:** the first scans of the source bag contain invalid returns and must not reach FAST-LIO2.
+3. **QoS:** sensor topics are replayed with an explicit reliable / volatile QoS profile (`configs/qos_override.yaml`).
+
+### 4.2 Converter (`scripts/convert_mars_bag.py`)
+Standalone Python (`rosbags` library, no ROS 1 installation needed):
+- Registers the Livox message definition from the ROS 1 bag and deserialises each message.
+- **Skips the first 169 LiDAR scans** (`SKIP_LIDAR = 169`) and **all IMU messages before the first retained scan**.
+- Copies every point field (`offset_time, x, y, z, reflectivity, tag, line`) and the original header timestamps unchanged.
+- Serialises `livox_ros_driver2/msg/CustomMsg` and `sensor_msgs/msg/Imu` to CDR and writes a ROS 2 SQLite3 bag.
+
+Within the retained window no message is dropped; the "loss" is the intentional removal of start-up data.
+
+### 4.3 Diagnostic tools
+- `scripts/verify_ros2_bag.py`: checks that converted scans contain non-zero XYZ data.
+- `scripts/diagnose_filtering.py`: reproduces FAST-LIO2's Livox pre-filters (blind distance 4.0 m, `line < 6`, return-tag check `tag & 0x30`) on converted scans.
+
+---
+
+## 5. State Estimation & Odometry: FAST-LIO2
+
+FAST-LIO2 couples raw LiDAR points with IMU measurements in an **Iterated Extended Kalman Filter (IEKF)** and registers points directly against an incremental KD-tree map (no feature extraction).
+
+### 5.1 Kinematic model
+On $\mathcal{M} = SO(3) \times \mathbb{R}^{15}$ (extrinsics fixed):
+
+$$\dot{\mathbf{p}} = \mathbf{v}, \qquad \dot{\mathbf{v}} = \mathbf{R} (\mathbf{a}_m - \mathbf{b}_a - \mathbf{n}_a) + \mathbf{g}, \qquad \dot{\mathbf{R}} = \mathbf{R} \lfloor \boldsymbol{\omega}_m - \mathbf{b}_\omega - \mathbf{n}_\omega \rfloor_\times, \qquad \dot{\mathbf{b}}_a = \mathbf{n}_{ba}, \ \dot{\mathbf{b}}_\omega = \mathbf{n}_{b\omega}$$
+
+with position $\mathbf{p}$, velocity $\mathbf{v}$, attitude $\mathbf{R}$, IMU measurements $\mathbf{a}_m, \boldsymbol{\omega}_m$, biases $\mathbf{b}_a, \mathbf{b}_\omega$ and gravity $\mathbf{g}$ (estimated as part of the state).
+
+### 5.2 Error state
+$$\mathbf{x} = \hat{\mathbf{x}} \boxplus \delta \mathbf{x} = \begin{bmatrix} \hat{\mathbf{R}} \exp(\delta \boldsymbol{\theta}) & \hat{\mathbf{p}} + \delta \mathbf{p} & \hat{\mathbf{v}} + \delta \mathbf{v} & \hat{\mathbf{b}}_\omega + \delta \mathbf{b}_\omega & \hat{\mathbf{b}}_a + \delta \mathbf{b}_a & \hat{\mathbf{g}} + \delta \mathbf{g} \end{bmatrix}, \quad \delta\mathbf{x} \in \mathbb{R}^{18}$$
+
+### 5.3 Point-to-plane residual
+Each motion-compensated point is mapped to the world frame,
+$${}^W \mathbf{p}_i = \hat{\mathbf{R}} \left( \mathbf{R}_I^L {}^L \mathbf{p}_i + \mathbf{t}_I^L \right) + \hat{\mathbf{p}},$$
+its 5 nearest map points (`NUM_MATCH_POINTS = 5`) define a plane with normal $\mathbf{u}_i$ and centroid $\mathbf{q}_i$, and the residual is $r_i = \mathbf{u}_i^T ({}^W \mathbf{p}_i - \mathbf{q}_i)$ with Jacobian
+$$\mathbf{H}_i = \begin{bmatrix} -\mathbf{u}_i^T \hat{\mathbf{R}} \lfloor \mathbf{R}_I^L {}^L \mathbf{p}_i + \mathbf{t}_I^L \rfloor_\times & \mathbf{u}_i^T & \mathbf{0}_{1 \times 12} \end{bmatrix}.$$
+
+### 5.4 Configuration (`src/FAST_LIO_ROS2/config/avia.yaml`)
+| Parameter | Value |
+| :--- | :--- |
+| `blind` | 4.0 m |
+| `point_filter_num` | 3 (keep 1 of every 3 points) |
+| `filter_size_surf` / `filter_size_map` | 0.5 m / 0.5 m |
+| `max_iteration` (IEKF) | 3 |
+| `acc_cov` / `gyr_cov` | 0.1 / 0.1 |
+| `extrinsic_est_en` | false |
+| `pcd_save_en` / `interval` | true / −1 (single PCD) |
+
+### 5.5 Output
+- **Map:** `src/FAST_LIO_ROS2/PCD/scans.pcd`, **1,907,061 points**, 59 MB binary PCD.
+- **Trajectory:** `src/FAST_LIO_ROS2/Log/mat_pre.txt`, 186 per-scan states over 18.8 s; the path is 37.5 m long. (This log records the IMU-propagated state before each IEKF update; it is used only as a set of sensor positions.)
+- **Map frame:** `camera_init` is the initial IMU frame and is **not gravity-aligned**. The estimated gravity is (9.81, −0.19, 0.16) m/s², so **X is close to vertical**: 97.5 % of estimated surface normals are dominated by their X component, and about half the points lie in a 0.3 m slab at X ≈ 6.3 m (the ground).
+- **Extents:** X ∈ [−30.09, 11.66] m (41.75 m, vertical), Y ∈ [−26.02, 41.71] m (67.73 m), Z ∈ [−41.36, 28.13] m (69.49 m).
+
+---
+
+## 6. Uniform OctoMap Representation
+
+### 6.1 Occupancy model
+OctoMap stores a log-odds value per voxel,
+$$L(n) = \ln \frac{P(n)}{1 - P(n)}, \qquad L(n \mid z_{1:t}) = L(n \mid z_{1:t-1}) + L(n \mid z_t), \qquad L(n) \in [l_{\min}, l_{\max}],$$
+with $p_{\text{occ}} = 0.7$ ($L_{\text{occ}} = 0.85$), $p_{\text{free}} = 0.4$, $l_{\min} = -2.0$, $l_{\max} = 3.5$.
+
+**Occupancy semantics in this project:** the maps are *endpoint occupancy octrees*. Each accumulated point adds one hit update, and no free-space updates are made: ray-based carving needs each point's sensor origin, which `scans.pcd` does not store. Observed-free and unobserved space are therefore both **unknown**.
+
+### 6.2 Converter (`scripts/pcd_to_octomap.cpp`)
+Loads `scans.pcd` as `pcl::PointXYZ`, calls `tree.updateNode(point, true)` for each finite point, updates inner occupancy, and writes with `writeBinary()` (maximum-likelihood thresholding and pruning). Rebuilding the 0.10, 0.20 and 0.40 m maps reproduced the stored files byte for byte.
+
+### 6.3 Uniform maps
+| Resolution | File | Size | Tree nodes | Occupied leaves |
+| :---: | :--- | ---: | ---: | ---: |
+| 0.40 m | `uav_octomap_0.4m.bt` | 21.7 KB | 41,343 | 30,299 |
+| 0.20 m | `uav_octomap_0.2m.bt` | 84.3 KB | 157,247 | 114,165 |
+| 0.10 m | `uav_octomap_0.1m.bt` | 320.9 KB | 531,026 | 366,772 |
+| 0.05 m | `uav_octomap_0.05m.bt` | 1,077.3 KB | 1,388,554 | 837,055 |
+
+---
+
+## 7. Dynamic Voxel Gridding: Method
+
+```mermaid
+flowchart TD
+    A["scans.pcd (1.9M points)"] --> B["k-NN covariance (k = 25, OpenMP)"]
+    B --> C["Surface variation sigma_n = l3 / (l1 + l2 + l3)"]
+    T["FAST-LIO2 trajectory (186 poses)"] --> D["Range d = distance to nearest pose"]
+    A --> D
+    C --> E["Requested depth D(p) in [13, 16]"]
+    D --> E
+    E --> F["Pass 1: refinement sets R_d"]
+    F --> G["Pass 2: insert each point at first non-refined depth"]
+    G --> H["Inner occupancy, prune, writeBinary()"]
+    H --> I["maps/dynamic_octomap.bt / .ot"]
+```
+
+### 7.1 Surface variation
+For each point, the covariance $\mathbf{C}$ of its $k = 25$ nearest neighbours has eigenvalues $0 \le \lambda_3 \le \lambda_2 \le \lambda_1$, and
+$$\sigma_n = \frac{\lambda_3}{\lambda_1 + \lambda_2 + \lambda_3} \in \left[0, \tfrac{1}{3}\right].$$
+σ_n ≈ 0 on planes; it grows at edges, corners and thin structures, and in noisy or sparse regions. PCL's `NormalEstimationOMP` computes exactly this quantity.
+
+### 7.2 Range to the trajectory
+$d_i = \min_k \|\mathbf{p}_i - \mathbf{t}_k\|$ over the 186 FAST-LIO2 poses. This is a proxy for capture range (the accumulated cloud does not record which pose saw each point), and is more faithful than the distance to the map origin, which ignores the 37.5 m travelled.
+
+### 7.3 Depth policy
+With base resolution 0.05 m and OctoMap's maximum depth 16, $\text{size}(D) = 0.05 \cdot 2^{16 - D}$ m:
+
+| Condition | Requested depth | Voxel |
+| :--- | :---: | :---: |
+| σ_n < 0.025 and d > 15 m (planar, far) | 13 | 0.40 m |
+| σ_n < 0.025 and d ≤ 15 m (planar, near) | 14 | 0.20 m |
+| 0.025 ≤ σ_n < 0.060 and d > 25 m (moderate, far) | 14 | 0.20 m |
+| 0.025 ≤ σ_n < 0.060 and d ≤ 25 m (moderate, near) | 15 | 0.10 m |
+| σ_n ≥ 0.060 (high variation) | 16 | 0.05 m |
+
+The thresholds were set by hand from the σ_n distribution of this dataset and are not optimised.
+
+### 7.4 Why naive depth-targeted insertion fails
+Descending the octree per point and stopping at the requested depth means that a finer point will eventually meet an existing coarser **leaf** on its path. OctoMap's `expandNode()` then creates **all eight children** with the parent's value. A freshly created root behaves the same way: its log-odds is 0, OctoMap treats `L ≥ 0` (P ≥ 0.5) as occupied, and every expanded sibling becomes occupied. The result is occupied voxels with no LiDAR return (up to 1,638 m wide at depth 1), and the map depends on point order.
+
+### 7.5 Order-independent two-pass construction
+Let κ_d(p) be the key of the depth-d voxel containing p.
+
+1. **Pass 1 (refinement):** for each point i and each $d \in [D_{\min}, D_i - 1]$, add κ_d(p_i) to the set R_d of voxels that must be subdivided.
+2. **Pass 2 (insertion):** insert each point at the first depth $e_i \ge D_{\min}$ with κ_{e_i}(p_i) ∉ R_{e_i} (or D_max), creating only the path to that node and adding $L_{\text{occ}}$.
+3. Update inner occupancies (max of children), prune, export with `writeBinary()`.
+
+Properties:
+- **No coarsening:** $e_i \ge D_i$.
+- **Consistency:** all points in a voxel get the same insertion depth, so no leaf is ever on another point's path and nothing is expanded.
+- **Order independence:** the result does not depend on point order.
+- **Unknown space preserved:** nodes exist only on paths to voxels that contain points.
+
+The implementation counts insertion conflicts and aborts if any occur (0 observed). Inside a coarse cell the effective resolution is the finest requested by any point in it, so planar points next to edges are inserted finer than requested.
+
+### 7.6 Hierarchical ray traversal
+`castRay()` steps a 3D DDA at the base resolution, so its cost depends on range / 0.05 m whether or not the map is coarse there. The hierarchical traversal (in `benchmark_octomap.cpp`) instead does the following at each step:
+1. Find the deepest existing node containing the current point.
+2. If it is an occupied leaf, report a hit.
+3. Otherwise jump to the exit face of that cell, plus 0.1 mm. The cell is either unknown (a missing child) or a free leaf.
+
+The semantics are the same as `castRay(..., ignoreUnknown = true)`; agreement is measured below.
+
+---
+
+## 8. Dynamic Voxel Gridding: Results
+
+**Protocol.** Five maps are built from the same cloud: uniform 0.40 / 0.20 / 0.10 / 0.05 m, and adaptive 0.05–0.40 m. The naive-expansion prototype (`maps/legacy/dynamic_octomap_naive_expand.bt`) is evaluated as a negative control. Ray sets contain 50,000 rays each, starting at random FAST-LIO2 poses with a 30 m maximum range:
+- **omnidirectional:** directions uniform on the sphere; mostly misses.
+- **surface-directed:** pointed at a random cloud point 1–30 m away; >99.9 % hits.
+
+Latencies are single-threaded medians of 3 runs on 2× Intel Xeon Silver 4510 (48 threads, 125 GB RAM). Chamfer distance uses 20,000 point and 20,000 voxel-centre samples. *Edge* points have σ_n ≥ 0.06 (753,260) and *planar* points σ_n < 0.025 (783,977).
+
+### 8.1 Correctness verification
+| Metric | Naive expansion (prototype) | Two-pass (this work) |
+| :--- | ---: | ---: |
+| Occupied leaves | 1,199,150 | 312,904 |
+| Unsupported occupied leaves | **872,179 (72.7 %)** | **0** |
+| Largest occupied voxel | 1,638.4 m | 0.80 m |
+| Occupied bounding box | ±1,638.4 m (whole octree) | cloud extents + ≤ 0.4 m |
+| Occupied volume | 3.5 × 10¹⁰ m³ | 1,161.8 m³ |
+| Ray origins inside occupied voxels | 50,000 / 50,000 | 0 / 50,000 |
+| Omnidirectional rays reporting a hit | 100 % (mean 0.02 m) | 7.4 % (mean 19.0 m) |
+| Point coverage | 100 % | 100 % |
+
+All four uniform maps also have 0 unsupported leaves and 100 % coverage. The prototype's 0.12 µs/ray and its earlier "`writeBinary()` collapses the tree" observation are both consequences of the false occupancy.
+
+### 8.2 Storage
+| Map | File (KB) | Tree nodes | Occupied leaves | Memory (MB) | Load (ms) | Occupied volume (m³) |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Uniform 0.40 m | 21.7 | 41,343 | 30,299 | 1.3 | 2.2 | 2,108.5 |
+| Uniform 0.20 m | 84.3 | 157,247 | 114,165 | 5.0 | 8.3 | 984.9 |
+| Uniform 0.10 m | 320.9 | 531,026 | 366,772 | 18.1 | 32.7 | 389.3 |
+| Uniform 0.05 m | 1,077.3 | 1,388,554 | 837,055 | 54.8 | 99.6 | 109.2 |
+| **Adaptive 0.05–0.40 m** | **337.4** | **485,603** | **312,904** | **18.0** | **34.2** | **1,161.8** |
+
+![Storage footprint](figures/storage_footprint.png)
+
+Against uniform 0.05 m, the adaptive map is 3.2× smaller on disk, 3.0× smaller in memory, has 2.7× fewer occupied leaves and loads 2.9× faster; its footprint is close to the uniform 0.10 m map. The cost is a larger occupied volume, because far planar surfaces (mostly the ground) are stored as conservative 0.40 m voxels.
+
+### 8.3 Geometric fidelity
+| Map | Chamfer (m) | Cloud→map (m) | Edge pts (m) | Planar pts (m) | Voxel @ edge (m) | Voxel @ planar (m) |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Uniform 0.40 m | 0.1626 | 0.1967 | 0.1925 | 0.1986 | 0.457 | 0.411 |
+| Uniform 0.20 m | 0.0879 | 0.1054 | 0.1182 | 0.0972 | 0.285 | 0.209 |
+| Uniform 0.10 m | 0.0472 | 0.0539 | 0.0605 | 0.0488 | 0.139 | 0.104 |
+| Uniform 0.05 m | 0.0240 | 0.0259 | 0.0281 | 0.0242 | 0.064 | 0.050 |
+| **Adaptive** | **0.0508** | **0.0699** | **0.0281** | **0.1244** | **0.064** | **0.279** |
+
+![Accuracy vs storage](figures/accuracy_vs_storage.png)
+![Effective voxel size](figures/effective_voxel_size.png)
+
+On edge and thin-structure points the adaptive map equals the uniform 0.05 m map, which is 2.2× better than the uniform 0.10 m map of equal storage. On planar points it is deliberately coarse. Its whole-scene Chamfer distance (0.0508 m) is therefore slightly worse than uniform 0.10 m (0.0472 m): adaptivity moves resolution to where collision checking needs it, but it does not improve overall accuracy.
+
+### 8.4 Collision-query latency (µs per ray)
+| Map | castRay (omni) | Hierarchical (omni) | castRay (surface) | Hierarchical (surface) | Omni hit rate | Agreement |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Uniform 0.40 m | 3.17 | 0.50 | 2.52 | 0.96 | 7.7 % | 99.92 % |
+| Uniform 0.20 m | 5.57 | 0.50 | 4.67 | 1.11 | 7.4 % | 99.95 % |
+| Uniform 0.10 m | 9.74 | 0.53 | 8.80 | 1.46 | 7.2 % | 99.99 % |
+| Uniform 0.05 m | 18.08 | 0.56 | 16.05 | 1.83 | 6.7 % | 99.99 % |
+| **Adaptive** | **17.03** | **0.53** | **15.14** | **1.37** | **7.4 %** | **99.99 %** |
+
+![Ray-casting latency](figures/raycast_latency_comparison.png)
+
+- **`castRay()` gains almost nothing from adaptivity** (≈6 % below uniform 0.05 m, comparable to run-to-run variation of up to ≈6 %), because it steps at the 0.05 m base resolution.
+- **Hierarchical traversal is 11–32× faster than `castRay()`** on the adaptive map and agrees with it on ≥ 99.92 % of rays for every map. Where both hit, distances differ by at most half a voxel, because `castRay()` returns the voxel centre.
+- **With hierarchical traversal, coarse cells pay off near surfaces:** 1.37 µs vs 1.83 µs (−25 %) against uniform 0.05 m for surface-directed rays, comparable to uniform 0.10 m (1.46 µs).
+
+### 8.5 Adaptive depth distribution
+| Depth | Voxel | Requested points | Inserted points | Occupied leaves |
+| :---: | :---: | ---: | ---: | ---: |
+| 12 | 0.80 m | – | – | 79 |
+| 13 | 0.40 m | 572,281 (30.0 %) | 394,233 (20.7 %) | 13,768 |
+| 14 | 0.20 m | 234,756 (12.3 %) | 180,426 (9.5 %) | 18,437 |
+| 15 | 0.10 m | 346,764 (18.2 %) | 403,221 (21.1 %) | 65,812 |
+| 16 | 0.05 m | 753,260 (39.5 %) | 929,181 (48.7 %) | 214,808 |
+
+![Depth distribution](figures/depth_distribution.png)
+
+Refinement moves 31 % of the points that requested 0.40 m (178,048 of 572,281) to finer voxels, because they share a coarse cell with a finer-requesting point. The depth-12 leaves arise from pruning eight fully occupied 0.40 m voxels. Generation takes ≈1.6 s: load 0.1 s, σ_n 0.8 s on 48 threads, ranges 0.1 s, two-pass build 0.5 s.
+
+---
+
+## 9. ROS 2 Runtime Infrastructure & Verification
+
+### 9.1 Launch file (`launch/octomap_server.launch.py`)
+Built on `OpaqueFunction`; installed to `install/octomap_server/share/octomap_server/launch/`. It accepts the following arguments:
+
+| Argument | Default | Behaviour |
 | :--- | :--- | :--- |
-| **Laser Wavelength** | 905 nm | Eye-safe Class 1 operation |
-| **Field of View (FOV)** | $70.4^\circ \text{ (Horizontal)} \times 77.2^\circ \text{ (Vertical)}$ (Circular rosette mode) | Broad spatial coverage in tight flight envelopes |
-| **Scanning Pattern** | Non-repetitive rosette pattern | Point density increases monotonically over integration time |
-| **Data Rate** | 240,000 points/sec (first return) | Extreme data bandwidth requiring optimized pipelines |
-| **Range Accuracy** | $\pm 2\text{ cm}$ (at 25m, $25^\circ\text{C}$) | High geometric precision for thin obstacle detection |
-| **Angular Accuracy** | $< 0.05^\circ$ | High-fidelity surface normal calculation |
-| **Detection Range** | Up to 450 m (at 80% reflectivity) | Long-range obstacle anticipation |
-| **Built-in IMU** | 6-DoF, 200 Hz sampling rate | Crucial for high-frequency motion un-distortion |
+| `resolution` | `0.2` | Selects `maps/uav_octomap_<res>m.bt` |
+| `octomap_path` | `auto` | `dynamic` / `adaptive` loads `maps/dynamic_octomap.bt` with resolution 0.05; `none` / `live` maps from `/cloud_registered` |
+| `frame_id` | `camera_init` | Frame of the FAST-LIO2 map |
+| `rviz` | `false` | Starts RViz2 with `configs/octomap.rviz` |
 
-#### Extrinsic Calibration Matrices (LiDAR to IMU Body Frame)
-The spatial transform between the LiDAR coordinate frame $\{L\}$ and IMU body frame $\{I\}$ is configured as:
+### 9.2 Point-cloud publisher (`scripts/pcd_publisher.py`)
+Parameters: `pcd_path`, `topic` (default `/cloud_registered`), `frame_id`, `rate`, `latched`. Latched mode uses `TRANSIENT_LOCAL` QoS so late subscribers (RViz2, Foxglove) receive the map immediately.
 
-$$\mathbf{T}_{I}^L = \begin{bmatrix} \mathbf{R}_I^L & \mathbf{t}_I^L \\ \mathbf{0}_{1 \times 3} & 1 \end{bmatrix}$$
+### 9.3 RViz2 configuration (`configs/octomap.rviz`)
+Fixed frame `camera_init`; displays: `/occupied_cells_vis_array` (MarkerArray), `/projected_map` (Map), `/octomap_point_cloud_centers` and `/cloud_registered` (PointCloud2), Grid and TF.
 
-Where:
-$$\mathbf{t}_I^L = \begin{bmatrix} 0.04165 \\ 0.02326 \\ -0.02840 \end{bmatrix} \text{ (meters)}, \quad \mathbf{R}_I^L = \mathbf{I}_{3 \times 3} = \begin{bmatrix} 1.0 & 0.0 & 0.0 \\ 0.0 & 1.0 & 0.0 \\ 0.0 & 0.0 & 1.0 \end{bmatrix}$$
+> `octomap_server` projects along Z. In this dataset Z is horizontal (Section 5.5), so `/projected_map` is a side view, not a ground plan.
 
-### 3.2 Dataset: MARS-LVIG UAV Benchmark
-Initial validation is performed using the publicly available **MARS-LVIG** benchmark dataset captured over complex infrastructure (e.g., airport terminals, runway perimeters, multi-story buildings).
-- **Primary Sequence:** `HKairport01`
-- **Full Dataset Size:** ~19 GB raw rosbag archives
-- **Converted Test Slices (SQLite3 / CDR):**
-  - `datasets/HKairport01_test3`: Initial sanity check slice (28 KB).
-  - `datasets/HKairport01_test4`: Medium flight segment (145.2 MB, 2,100+ messages).
-  - `datasets/HKairport01_test5`: Full 20-second active trajectory slice (291.8 MB).
+### 9.4 Automated tests (`scripts/test_octomap_pipeline.py`): 27 checks, all passing
+1. **Files:** all uniform (0.05–0.40 m) and adaptive maps exist.
+2. **Correctness** (from `Reports/benchmark/benchmark_results.json`). For every map:
+   - 0 unsupported voxels;
+   - 100 % coverage;
+   - castRay / hierarchical agreement ≥ 99.9 %;
+   - results newer than the map files.
+3. **Uniform 0.20 m served by `octomap_server`:**
+   - `/octomap_binary`: 86,164 B, resolution 0.20 m, frame `camera_init`;
+   - 114,165 voxels;
+   - `/projected_map` 212 × 341 cells.
+4. **Adaptive map served by `octomap_server`:**
+   - `/octomap_binary`: 345,398 B, resolution 0.05 m;
+   - 312,904 voxels in 17 depth layers, equal to the occupied leaf count;
+   - `/projected_map` 846 × 1369 cells.
 
-#### `HKairport01_test5` Metadata Breakdown
-- **Total Duration:** 19.998 seconds ($1.671606 \times 10^9$ Unix epoch).
-- **Total Messages:** 4,366
-- **`/livox/lidar` Scans:** 201 messages (~10.05 Hz), format `livox_ros_driver2/msg/CustomMsg`.
-- **`/livox/imu` Packets:** 4,165 messages (~208.27 Hz), format `sensor_msgs/msg/Imu`.
-- **Storage Backend:** SQLite3 database (`.db3`) with CDR serialization (ROS 2 Jazzy type-store).
+Each server runs in its own process group and is stopped completely after its test. The expected resolution and voxel count are asserted for each map. An earlier version only terminated the shell wrapper, so a second test could receive the first server's latched map.
 
 ---
 
-## 4. Data Ingestion & ROS 1 to ROS 2 Migration Pipeline
+## 10. Project Status & Limitations
 
-### 4.1 Serialization Anomalies & Root Causes
-The MARS-LVIG dataset was natively recorded in legacy ROS 1 Noetic environments. Direct replay into modern ROS 2 Jazzy environments failed due to:
-1. **Custom Binary Struct Packing:** Livox ROS 1 drivers pack individual beam returns into a specialized byte struct (`CustomPoint`) that lacks standard ROS 2 IDL registration.
-2. **Initial Hardware Blanking:** Livox Avia hardware outputs zero-filled or malformed point coordinates during internal oscillator spin-up and synchronization (~15–20 scans).
-3. **QoS Protocol Mismatch:** ROS 2 Jazzy defaults to volatile QoS for sensor subscriptions, whereas bag playback tools frequently announce transient-local or unspecified QoS latches, leading to silent packet dropping.
+### 10.1 Status
+```
+[x] Milestone 1: ROS 2 Jazzy migration & Livox message conversion
+[x] Milestone 2: FAST-LIO2 state estimation & map accumulation
+[x] Milestone 3: Uniform OctoMaps (0.05-0.40 m)
+[x] Milestone 4: ROS 2 launch, latched publishing, RViz2 configuration
+[x] Milestone 5: Automated verification suite
+[x] Milestone 6: Dynamic Voxel Gridding (two-pass), benchmark & verification
+[ ] Planned:     Physical UAV integration & field flights (pending hardware)
+```
+Terrain surface modelling / ground extraction is outside the scope of this project phase.
 
-### 4.2 Custom Conversion Implementation (`scripts/convert_mars_bag.py`)
-To resolve these issues without requiring a full ROS 1 system installation, a standalone Python translation engine was developed utilizing the `rosbags` library:
-- **ROS 1 Deserialization:** Reads native ROS 1 binary streams using explicit ROS 1 message schemas.
-- **Initial Scan Pruning:** Discards the first 169 corrupt scans (`SKIP_LIDAR = 169`), guaranteeing that FAST-LIO2 only receives geometrically valid frames.
-- **Timestamp Synchronisation:** Re-aligns IMU and LiDAR headers relative to the first valid LiDAR timestamp.
-- **ROS 2 CDR Serialization:** Dynamically constructs `livox_ros_driver2/msg/CustomMsg` and `sensor_msgs/msg/Imu` CDR byte buffers and writes them into ROS 2 Jazzy SQLite3 databases.
+### 10.2 Limitations
+- **No free space:** maps contain occupied and unknown space only.
+- **Hand-set thresholds:** σ_n and range thresholds are not optimised. 39.5 % of points request the finest depth, partly because ±2 cm range noise on a dense cloud raises σ_n on planar surfaces.
+- **Planar inflation:** coarse ground voxels raise occupied volume, which matters for close ground interaction (e.g. landing).
+- **Range proxy:** range is measured to the nearest trajectory pose, not the capturing pose.
+- **Evaluation breadth:** one 20 s slice of one dataset, and timings from one workstation. FAST-LIO2's trajectory has not been compared with the dataset's ground truth.
 
-```python
-# Point translation loop in scripts/convert_mars_bag.py
-for p in src.points:
-    q = PointType(
-        offset_time=p.offset_time,
-        x=p.x, y=p.y, z=p.z,
-        reflectivity=p.reflectivity,
-        tag=p.tag, line=p.line
-    )
-    points.append(q)
+### 10.3 Planned deployment (not validated)
+Target platform: Livox LiDAR over Ethernet, a Pixhawk-class flight controller over MAVLink, and a Jetson Orin–class companion computer running `livox_ros_driver2`, FAST-LIO2 and the adaptive map. On-board use requires an incremental version of the two-pass build; the offline build takes ≈1.6 s for the full map.
+
+---
+
+## 11. Reproducing the Results
+
+```bash
+cd /home/shaurya/BTP_UAV_LiDAR_Reconstruction
+scripts/build_octomap_tools.sh                       # builds the three C++ tools
+
+PCD=src/FAST_LIO_ROS2/PCD/scans.pcd
+TRAJ=src/FAST_LIO_ROS2/Log/mat_pre.txt
+for r in 0.4 0.2 0.1 0.05; do scripts/pcd_to_octomap $PCD maps/uav_octomap_${r}m.bt $r; done
+scripts/dynamic_voxel_octomap $PCD maps/dynamic_octomap.bt --traj $TRAJ \
+    --stats Reports/benchmark/dynamic_octomap_stats.json
+
+scripts/benchmark_octomap --pcd $PCD --traj $TRAJ \
+    --json Reports/benchmark/benchmark_results.json --md Reports/benchmark_octomap_results.md \
+    "Uniform 0.40 m=maps/uav_octomap_0.4m.bt" "Uniform 0.20 m=maps/uav_octomap_0.2m.bt" \
+    "Uniform 0.10 m=maps/uav_octomap_0.1m.bt" "Uniform 0.05 m=maps/uav_octomap_0.05m.bt" \
+    "Dynamic Adaptive=maps/dynamic_octomap.bt" \
+    "Legacy naive-expand=maps/legacy/dynamic_octomap_naive_expand.bt"
+
+venv/bin/python scripts/generate_plots.py            # figures from the JSON
+
+source /opt/ros/jazzy/setup.bash && source install/setup.bash
+/usr/bin/python3 scripts/test_octomap_pipeline.py    # 27 checks
 ```
 
-### 4.3 Validation & Filtering Diagnostic Tools
-- [`scripts/verify_ros2_bag.py`](file:///home/shaurya/BTP_UAV_LiDAR_Reconstruction/scripts/verify_ros2_bag.py): Inspects converted bag files, verifies non-zero point distributions across scans, and validates CDR serialization integrity.
-- [`scripts/diagnose_filtering.py`](file:///home/shaurya/BTP_UAV_LiDAR_Reconstruction/scripts/diagnose_filtering.py): Simulates FAST-LIO2's internal `avia_handler` pre-filters (blind distance $d_{\text{blind}} = 4.0\text{ m}$, scan line check $< 6$, and return tag filter `tag & 0x30`), validating that incoming packets satisfy all filtering preconditions.
-
 ---
 
-## 5. State Estimation & Odometry: FAST-LIO2 Mathematical Framework
+## 12. Summary Table of Artifacts
 
-FAST-LIO2 is a computationally lightweight, direct LiDAR-Inertial Odometry framework that tightly couples raw LiDAR returns with high-frequency IMU measurements via an **Iterated Extended Kalman Filter (IEKF)**.
-
-### 5.1 Continuous-Time Kinematic Model
-The IMU kinematics on the manifold $\mathcal{M} = SO(3) \times \mathbb{R}^{15}$ are governed by:
-
-$$\dot{\mathbf{p}} = \mathbf{v}$$
-
-$$\dot{\mathbf{v}} = \mathbf{R} (\mathbf{a}_m - \mathbf{b}_a - \mathbf{n}_a) + \mathbf{g}$$
-
-$$\dot{\mathbf{R}} = \mathbf{R} \lfloor \boldsymbol{\omega}_m - \mathbf{b}_\omega - \mathbf{n}_\omega \rfloor_\times$$
-
-$$\dot{\mathbf{b}}_a = \mathbf{n}_{ba}, \quad \dot{\mathbf{b}}_\omega = \mathbf{n}_{b\omega}$$
-
-Where:
-- $\mathbf{p} \in \mathbb{R}^3$, $\mathbf{v} \in \mathbb{R}^3$, $\mathbf{R} \in SO(3)$ represent position, velocity, and attitude of the IMU in the global frame $\{W\}$.
-- $\mathbf{a}_m, \boldsymbol{\omega}_m$ are raw linear acceleration and angular velocity measurements from the IMU.
-- $\mathbf{b}_a, \mathbf{b}_\omega$ are IMU bias vectors driven by Gaussian white noises $\mathbf{n}_{ba}, \mathbf{n}_{b\omega}$.
-- $\mathbf{n}_a, \mathbf{n}_\omega$ are additive measurement white noise vectors.
-- $\mathbf{g} = [0, 0, -9.81]^T \text{ m/s}^2$ is the gravitational acceleration vector.
-- $\lfloor \mathbf{v} \rfloor_\times$ denotes the $3 \times 3$ skew-symmetric cross-product matrix.
-
-### 5.2 Discrete Error-State Manifold Formulation
-Let the true state be $\mathbf{x} \in \mathcal{M}$ and its estimate be $\hat{\mathbf{x}}$. The error state $\delta \mathbf{x} \in \mathbb{R}^{18}$ is defined using the $\boxplus$ (box-plus) manifold operator:
-
-$$\mathbf{x} = \hat{\mathbf{x}} \boxplus \delta \mathbf{x} = \begin{bmatrix} \hat{\mathbf{R}} \exp(\delta \boldsymbol{\theta}) \\ \hat{\mathbf{p}} + \delta \mathbf{p} \\ \hat{\mathbf{v}} + \delta \mathbf{v} \\ \hat{\mathbf{b}}_\omega + \delta \mathbf{b}_\omega \\ \hat{\mathbf{b}}_a + \delta \mathbf{b}_a \\ \hat{\mathbf{g}} + \delta \mathbf{g} \end{bmatrix}$$
-
-### 5.3 Point-to-Plane Measurement Residual
-Unlike feature-extraction based SLAM (e.g., LOAM, LeGO-LOAM), FAST-LIO2 bypasses edge/planar feature extraction and evaluates raw LiDAR points directly. For every motion-undistorted point ${}^L \mathbf{p}_i$ received at time $t_i$, its global coordinate estimate is:
-
-$${}^W \mathbf{p}_i = \hat{\mathbf{R}} \left( \mathbf{R}_I^L {}^L \mathbf{p}_i + \mathbf{t}_I^L \right) + \hat{\mathbf{p}}$$
-
-Using the incremental KD-tree (**ikd-Tree**), the system queries the $k$-nearest neighbors of ${}^W \mathbf{p}_i$ from the accumulated map to fit a local planar patch with normal $\mathbf{u}_i$ and centroid $\mathbf{q}_i$. The point-to-plane residual $r_i(\mathbf{x})$ is formulated as:
-
-$$r_i(\mathbf{x}) = \mathbf{u}_i^T \left( {}^W \mathbf{p}_i - \mathbf{q}_i \right) = 0$$
-
-Linearizing with respect to the error state $\delta \mathbf{x}$:
-
-$$r_i(\hat{\mathbf{x}} \boxplus \delta \mathbf{x}) \approx r_i(\hat{\mathbf{x}}) + \mathbf{H}_i \delta \mathbf{x} + v_i, \quad v_i \sim \mathcal{N}(0, \sigma_i^2)$$
-
-Where the measurement Jacobian $\mathbf{H}_i$ is:
-
-$$\mathbf{H}_i = \begin{bmatrix} -\mathbf{u}_i^T \hat{\mathbf{R}} \lfloor \mathbf{R}_I^L {}^L \mathbf{p}_i + \mathbf{t}_I^L \rfloor_\times & \mathbf{u}_i^T & \mathbf{0}_{1 \times 12} \end{bmatrix}$$
-
-### 5.4 The Incremental KD-Tree (`ikd-Tree`)
-A key innovation in FAST-LIO2 is the `ikd-Tree`:
-- Dynamically maintains a dense 3D point cloud map with active tree balancing.
-- Supports single-point insertion, box deletion, and radius search in $\mathcal{O}(\log N)$ time.
-- Employs lazy labels and concurrent tree re-balancing in a background worker thread, ensuring the main state estimation loop finishes well within the 100 ms scan interval.
-
-### 5.5 Odometry Configuration & Output
-Configured via [`avia.yaml`](file:///home/shaurya/BTP_UAV_LiDAR_Reconstruction/src/FAST_LIO_ROS2/config/avia.yaml):
-- `blind: 4.0` (ignores self-returns from drone chassis/propellers within 4 meters).
-- `point_filter_num: 3` (subsamples 1 in 3 points for computational efficiency).
-- `filter_size_surf: 0.5` m, `filter_size_map: 0.5` m.
-- **Output:** Accumulated global map saved to [`src/FAST_LIO_ROS2/PCD/scans.pcd`](file:///home/shaurya/BTP_UAV_LiDAR_Reconstruction/src/FAST_LIO_ROS2/PCD/scans.pcd).
-  - **Point Count:** **1,907,061 3D points**
-  - **File Size:** 59 MB binary PCD format
-  - **Attributes per Point:** $x, y, z, \text{normal}_x, \text{normal}_y, \text{normal}_z, \text{intensity}, \text{curvature}$.
-
----
-
-## 6. Global Map Accumulation & Volumetric OctoMap Representation
-
-Point cloud representations ($N \approx 2 \times 10^6$ points) are unorganized, memory-heavy, and lack explicit differentiation between free and unknown space. To enable collision checking and obstacle avoidance, the point cloud is converted into a hierarchical 3D voxel representation using **OctoMap**.
-
-### 6.1 Mathematical Principles of OctoMap
-OctoMap discretizes 3D space recursively into an octree where each node represents a cubic voxel.
-
-#### Log-Odds Occupancy Update
-Each voxel $n$ maintains an occupancy probability $P(n) \in [0, 1]$. To avoid floating-point underflow/overflow during repeated updates, probabilities are maintained in log-odds notation:
-
-$$L(n) = \ln \left( \frac{P(n)}{1 - P(n)} \right) \iff P(n) = 1 - \frac{1}{1 + \exp(L(n))}$$
-
-Given sensor observations $z_{1:t}$, the log-odds update follows Bayesian formulation:
-
-$$L(n \mid z_{1:t}) = L(n \mid z_{1:t-1}) + L(n \mid z_t)$$
-
-Where $L(n \mid z_t)$ is the inverse sensor model:
-- $L_{\text{occ}} = \ln \left( \frac{p_{\text{occ}}}{1 - p_{\text{occ}}} \right) > 0$ for reflected points (occupied).
-- $L_{\text{free}} = \ln \left( \frac{p_{\text{free}}}{1 - p_{\text{free}}} \right) < 0$ along the ray between sensor and target (free).
-
-Clamping thresholds $[l_{\min}, l_{\max}]$ are enforced to prevent saturation:
-
-$$L(n) = \max \left( l_{\min}, \min \left( L(n), l_{\max} \right) \right)$$
-
-Standard thresholds: $p_{\text{occ}} = 0.7$, $p_{\text{free}} = 0.4$, $l_{\min} = -2.0$ ($P \approx 0.12$), $l_{\max} = 3.5$ ($P \approx 0.97$).
-
-### 6.2 C++ High-Performance Converter (`scripts/pcd_to_octomap.cpp`)
-To convert `scans.pcd` into OctoMap representations, a custom native C++ conversion binary was implemented:
-- Ingests `pcl::PointCloud<pcl::PointXYZ>`.
-- Iterates through valid finite points and updates tree nodes: `tree.updateNode(octomap::point3d(pt.x, pt.y, pt.z), true)`.
-- Invokes `tree.updateInnerOccupancy()` to recursively update parent node occupancy states up to the root.
-- Exports both full octrees (`.ot`) and compact binary octrees (`.bt`).
-
-### 6.3 Multi-Resolution OctoMap Benchmarks
-Execution of `pcd_to_octomap` across multiple voxel resolutions yielded:
-
-| Voxel Resolution ($\Delta r$) | Output File | File Size | Octree Depth | Total Tree Nodes | Active 3D Voxels | Use-Case Focus |
-| :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **0.10 m** | `uav_octomap_0.1m.bt` | 328.6 KB | 16 | 531,026 | ~420,000 | Ultra-high detail / close-proximity flight |
-| **0.20 m** | `uav_octomap_0.2m.bt` | 86.3 KB | 15 | 157,247 | 114,165 | **Balanced baseline / Real-time navigation** |
-| **0.40 m** | `uav_octomap_0.4m.bt` | 22.2 KB | 14 | ~41,000 | ~32,000 | Long-range global path planning |
-
-*Metric Bounding Box:*
-- $X \in [-10.8\text{ m}, 31.4\text{ m}]$ (Extent: 42.2 m)
-- $Y \in [-34.2\text{ m}, 34.0\text{ m}]$ (Extent: 68.2 m)
-- $Z \in [-4.6\text{ m}, 12.8\text{ m}]$ (Extent: 17.4 m)
-
----
-
-## 7. ROS 2 Runtime Infrastructure, Visualization & Verification
-
-### 7.1 Dynamic Launch Architecture (`launch/octomap_server.launch.py`)
-To prevent hardcoded directory dependencies and eliminate `ament_index_python` package resolution errors, the launch pipeline was completely refactored using ROS 2 `OpaqueFunction`:
-- Packaged directly into the installed workspace share directory: `install/octomap_server/share/octomap_server/launch/`.
-- **Runtime Arguments:**
-  - `resolution` (default `'0.2'`): Selects voxel resolution at launch.
-  - `octomap_path` (default `'auto'`): Automatically matches `maps/uav_octomap_<resolution>m.bt`; accepts `'none'`/`'live'` for live SLAM from `/cloud_registered`.
-  - `frame_id` (default `'camera_init'`): Coordinates with FAST-LIO2 world frame.
-  - `rviz` (default `'false'`): Automatically boots RViz2 with pre-configured displays.
-
-### 7.2 Point Cloud Publisher (`scripts/pcd_publisher.py`)
-Provides dynamic streaming of global PCD maps for remote visualization:
-- Dynamic ROS 2 parameters: `pcd_path`, `topic`, `frame_id`, `rate`, `latched`.
-- Configured with `TRANSIENT_LOCAL` QoS, allowing newly connecting subscribers (e.g., Foxglove Studio, RViz2) to instantly receive the map without continuous network polling.
-
-### 7.3 RViz2 Visualization Configuration (`configs/octomap.rviz`)
-Configured and verified displays for:
-1. **Occupied Voxels (MarkerArray):** `/occupied_cells_vis_array` rendering multi-level altitude color ramps (Jet/Turbo elevation colormaps).
-2. **Projected 2D Map:** `/projected_map` ($212 \times 341$ cells, 6,352 occupied cells) for floorplan navigation.
-3. **Centroid Cloud:** `/octomap_point_cloud_centers`.
-4. **Coordinate Frames:** Fixed frame `camera_init` with broadcast transforms to `body`.
-
-### 7.4 Automated Testing Suite (`scripts/test_octomap_pipeline.py`)
-An end-to-end automated verification script executes continuous integration sanity checks:
-- **Test 1:** Validates disk existence and byte sizes of all multi-resolution `.bt` map files.
-- **Test 2:** Spawns `octomap_server_node` in a background subprocess, polls ROS 2 graph discovery, inspects topic QoS, and asserts topic reception:
-  - `/octomap_binary`: 86,164 bytes received.
-  - `/occupied_cells_vis_array`: 17 marker depth layers, 114,165 active voxels.
-  - `/projected_map`: 212x341 grid size, 6,352 occupied cells.
-- **Result:** **100% test pass** on ROS 2 Jazzy.
-
----
-
-## 8. Current Project Status & Research Gap Analysis
-
-### 8.1 Status Overview
-
-```
-[===================================================================>] 88% Total Progress
-
-[x] Milestone 1: ROS 2 Jazzy Migration & Custom Packet Translation (Completed)
-[x] Milestone 2: FAST-LIO2 State Estimation & Trajectory Alignment (Completed)
-[x] Milestone 3: Global PCD Generation (1.9M points) & Multi-Res OctoMap (Completed)
-[x] Milestone 4: Modular Launch & Latched Visualization Infrastructure (Completed)
-[x] Milestone 5: Automated Verification & Validation Framework (Completed)
-[x] Milestone 6: Dynamic / Adaptive Voxel Gridding & Benchmarking (Completed)
-[ ] Milestone 7: 3D Terrain Surface Modeling & Ground Extraction (Next to be implemented)
-[ ] Milestone 8: Physical UAV Hardware Integration & Field Flight (Pending hardware)
-```
-
-### 8.2 Confirmation of Remaining Core Research Tasks
-The user's assessment is **completely correct**:
-**Dynamic Voxel Gridding** and **3D Terrain Surface Modeling** represent the two remaining algorithmic milestones of this BTP project, followed by the physical drone platform integration.
-
-#### The Problem with Current Static Voxel Gridding
-At present, `pcd_to_octomap` applies a **uniform** spatial resolution across the entire reconstructed space (e.g., exactly 0.2m everywhere). This introduces two significant inefficiencies:
-1. **Uniform fine resolution ($0.1\text{ m}$):** Captures delicate structural edges, but wastes over 70% of memory representing flat runways, ground planes, or empty air volumes at maximum depth.
-2. **Uniform coarse resolution ($0.4\text{ m}$):** Drastically reduces memory footprint, but completely obliterates thin structures (light poles, railings, power lines, tree canopies), posing collision risks for UAV navigation.
-
-#### The Need for 3D Terrain Surface Modeling
-For UAV flight planning, agricultural surveying, or landing zone detection, raw volumetric voxels do not distinguish between **traversable ground** and **above-ground obstacles** (vegetation, vehicles, structures). The UAV requires a continuous **2.5D Digital Elevation Model (DEM)** and a **triangulated surface mesh** representing true terrain elevation.
-
----
-
-## 9. Detailed Technical Plan: Dynamic / Adaptive Voxel Gridding
-
-### 9.1 Theoretical Formulation & Mathematical Models
-
-Instead of discretizing space with a fixed uniform voxel resolution $\Delta r$, we formulate an **Adaptive Resolution Model** $\Delta r(\mathbf{p})$ conditioned on:
-1. **Range from LiDAR sensor / UAV trajectory ($d$):** Accounting for angular beam divergence ($r \cdot \Delta \theta$) and quadratic point density decay ($1/r^2$).
-2. **Local Geometric Complexity / Surface Entropy ($\sigma_n$):** Allocating fine voxels to high-curvature boundaries and coarse voxels to planar ground or homogeneous regions.
-
-```mermaid
-flowchart TD
-    A["Raw Point Cloud scans.pcd (1.9M pts)"] --> B["OpenMP KD-Tree Neighborhood Search (k=30)"]
-    B --> C["Compute 3D Covariance Matrix C per Point"]
-    C --> D["Eigen-Decomposition: l1 >= l2 >= l3 >= 0"]
-    D --> E["Surface Curvature: sigma_n = l3 / (l1 + l2 + l3)"]
-    F["Sensor Trajectory / Origin Frame"] --> G["Calculate Euclidean Range d = ||p - p_0||"]
-    E --> H["Compute Adaptive Target Depth D(p) in [D_min, D_max]"]
-    G --> H
-    H --> I["C++ Native OctoMap Insertion at Depth D(p)"]
-    I --> J["Entropy-Guided Bottom-Up Pruning Pass"]
-    J --> K["Optimized Dynamic OctoMap (.bt / .ot)"]
-    K --> L["Quantitative Benchmarking & RViz2 Multi-Res Streaming"]
-```
-
-#### 1. Geometric Curvature & Dimensionality Metrics
-For each point $\mathbf{p}_i \in \mathbb{R}^3$, query its $k$-nearest neighbors $\mathcal{N}_k(\mathbf{p}_i) = \{ \mathbf{q}_1, \dots, \mathbf{q}_k \}$ using an OpenMP-accelerated KD-tree ($k = 30$).
-The local mean $\bar{\mathbf{p}}$ and $3 \times 3$ covariance matrix $\mathbf{C}$ are given by:
-
-$$\bar{\mathbf{p}} = \frac{1}{k} \sum_{j=1}^k \mathbf{q}_j, \quad \mathbf{C} = \frac{1}{k} \sum_{j=1}^k (\mathbf{q}_j - \bar{\mathbf{p}})(\mathbf{q}_j - \bar{\mathbf{p}})^T$$
-
-Solving the eigensystem $\mathbf{C} \mathbf{v}_m = \lambda_m \mathbf{v}_m$ yields sorted eigenvalues $\lambda_1 \ge \lambda_2 \ge \lambda_3 \ge 0$.
-We extract four geometric shape descriptors:
-1. **Surface Variation (Curvature):**
-   $$\sigma_n = \frac{\lambda_3}{\lambda_1 + \lambda_2 + \lambda_3} \in \left[0, \frac{1}{3}\right]$$
-2. **Planarity:**
-   $$P_{\lambda} = \frac{\lambda_2 - \lambda_3}{\lambda_1}$$
-3. **Linearity:**
-   $$L_{\lambda} = \frac{\lambda_1 - \lambda_2}{\lambda_1}$$
-4. **Scattering / Sphericity:**
-   $$S_{\lambda} = \frac{\lambda_3}{\lambda_1}$$
-
-#### 2. Range-Conditioned Metric
-Let $\mathbf{p}_{\text{sensor}}$ be the mean UAV pose or nearest trajectory waypoint. The Euclidean range is:
-
-$$d = \|\mathbf{p}_i - \mathbf{p}_{\text{sensor}}\|_2$$
-
-#### 3. Closed-Form Target Octree Depth Selection
-Let $D_{\max}$ be the maximum tree depth corresponding to the finest base resolution $\Delta r_0 = 0.05\text{ m}$ (for tree extent $\approx 64\text{ m}$, $D_{\max} = 16$).
-The voxel dimension at depth $D$ is:
-
-$$\text{size}(D) = \Delta r_0 \cdot 2^{D_{\max} - D}$$
-
-The target depth $D(\mathbf{p}_i)$ is computed via:
-
-$$D(\mathbf{p}_i) = \text{clamp} \left( \text{round} \left( D_{\max} - \beta \cdot \frac{d}{d_{\max}} + \gamma \cdot \frac{\sigma_n}{\sigma_{\text{thresh}}} \right), D_{\min}, D_{\max} \right)$$
-
-**Recommended Parameter Values:**
-- $D_{\max} = 16$ ($\Delta r = 0.05\text{ m}$), $D_{\min} = 13$ ($\Delta r = 0.40\text{ m}$).
-- $d_{\max} = 50.0\text{ m}$, $\beta = 2.0$ (gradually steps down 2 depth levels at outer ranges).
-- $\sigma_{\text{thresh}} = 0.08$, $\gamma = 2.0$ (promotes points with high curvature/edges to $D_{\max}$).
-
----
-
-### 9.2 Complete Algorithmic & Engineering Implementation
-
-#### Component A: Native C++ Dynamic OctoMap Engine (`scripts/dynamic_voxel_octomap.cpp`)
-1. **PCL Data Ingestion:** Reads `src/FAST_LIO_ROS2/PCD/scans.pcd` into `pcl::PointCloud<pcl::PointXYZ>::Ptr`.
-2. **OpenMP Parallel Covariance Analysis:**
-   ```cpp
-   #pragma omp parallel for schedule(dynamic, 1024)
-   for (size_t i = 0; i < cloud->size(); ++i) {
-       std::vector<int> k_indices(k);
-       std::vector<float> k_sqr_distances(k);
-       if (kdtree.nearestKSearch(cloud->points[i], k, k_indices, k_sqr_distances) >= 3) {
-           Eigen::Matrix3f cov;
-           Eigen::Vector4f centroid;
-           pcl::computeMeanAndCovarianceMatrix(*cloud, k_indices, cov, centroid);
-           Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> solver(cov);
-           Eigen::Vector3f eig = solver.eigenvalues(); // ascending
-           float sigma_n = eig[0] / (eig[0] + eig[1] + eig[2] + 1e-6f);
-           // compute target depth D(p)
-       }
-   }
-   ```
-3. **Depth-Constrained Insertion:** Inserts nodes at target depth $D_i$ into `octomap::OcTree`.
-4. **Entropy-Aware Pruning:** Evaluates child node occupancy and collapses identical clusters where local variance is below threshold.
-5. **Compilation Command (Verified):**
-   ```bash
-   g++ -O3 -fopenmp scripts/dynamic_voxel_octomap.cpp -o scripts/dynamic_voxel_octomap \
-       -I/usr/include/pcl-1.14 -I/usr/include/eigen3 \
-       -lpcl_io -lpcl_common -loctomap -loctomath
-   ```
-
-#### Component B: Quantitative Benchmarking Suite (`scripts/benchmark_octomap.cpp`)
-Evaluates `dynamic_octomap.bt` against uniform baselines (`0.10m`, `0.20m`, `0.40m`) across:
-- **Storage Footprint:** Disk space and memory tree size.
-- **Chamfer Distance ($d_{\text{CD}}$):** Metric geometric discrepancy between ground truth `scans.pcd` (1.9M points) and reconstructed leaf centers.
-- **Raycasting Collision Query Throughput:** Measures average query latency across 50,000 random obstacle-avoidance rays (`tree.castRay(...)`).
-
-#### Empirical Benchmark Results Table
-The automated benchmarking suite executed on the live environment yielded:
-
-| Map Representation | File Size (KB) | Total Nodes | Leaf Voxels | Load Time (ms) | Raycast Latency ($\mu\text{s}$) | Chamfer Distance (m) |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Uniform 0.40m** | 21.7 | 41,343 | 30,299 | 5.27 | 4.36 | 0.1623 |
-| **Uniform 0.20m** | 84.3 | 157,247 | 114,165 | 13.34 | 7.98 | 0.0878 |
-| **Uniform 0.10m** | 320.9 | 531,026 | 366,772 | 56.87 | 14.59 | 0.0472 |
-| **Dynamic Adaptive (0.05m–0.40m)** | **334.7** | **1,370,457** | **1,199,150** | 78.02 | **0.12** | 0.1890 |
-
-**Key Algorithmic Takeaways:**
-1. **Raycasting Speedup ($>120\times$ faster):** Dynamic OctoMap achieves an astonishing **$0.12\,\mu\text{s}$ per ray** (compared to $14.59\,\mu\text{s}$ on uniform 0.1m) because broad empty/planar regions are bounded by coarser nodes, allowing raycast algorithms to quickly short-circuit space without traversing 16 tree levels.
-2. **High-Density Feature Representation:** Preserves **$1.37\times 10^6$ nodes** (including $758,056$ fine $0.05\text{ m}$ edge voxels) within only $334.7\text{ KB}$ of binary storage.
-3. **Point Distribution Across Depth Hierarchy:**
-   - **Depth 13 ($0.40\text{ m}$):** $572,302$ points ($30.0\%$) — captures distant runway/flat ground planes.
-   - **Depth 14 ($0.20\text{ m}$):** $234,735$ points ($12.3\%$) — captures close-range ground and low-slope surfaces.
-   - **Depth 15 ($0.10\text{ m}$):** $346,764$ points ($18.2\%$) — captures wall boundaries and structural facades.
-   - **Depth 16 ($0.05\text{ m}$):** $753,260$ points ($39.5\%$) — captures high-frequency structural edges, wires, poles, and corners.
-
-#### Component C: ROS 2 Pipeline & Test Integration
-- **`launch/octomap_server.launch.py`:** Enhanced to accept `octomap_path:=dynamic`.
-- **`scripts/test_octomap_pipeline.py`:** Automated tests validate both uniform (0.2m) and dynamic adaptive maps with 100% pass rate.
-
----
-
-## 10. Detailed Technical Plan: 3D Terrain Surface Modeling & Ground Extraction
-
-### 10.1 Theoretical Formulation & Ground Filtering
-
-To generate high-resolution terrain models, ground returns must be cleanly separated from non-ground returns (vegetation, towers, terminal buildings).
-
-#### Algorithm Selection: Cloth Simulation Filter (CSF) vs. Patchwork++
-
-```mermaid
-flowchart TD
-    A["Raw Point Cloud scans.pcd"] --> B["Invert Point Cloud upside-down"]
-    B --> C["Simulate Cloth Drop (Newtonian Mechanics)"]
-    C -->|"Cloth Particles meet Inverted Points"| D["Rigid Terrain Surface Mesh"]
-    D --> E{"Distance d(p, Cloth) < Threshold?"}
-    E -->|"Yes"| F["Classified as Ground Points"]
-    E -->|"No"| G["Classified as Non-Ground (Obstacles/Buildings)"]
-    F --> H["2.5D DEM Grid Generation (IDW / Kriging)"]
-    F --> I["3D TIN / Poisson Surface Reconstruction"]
-```
-
-#### 1. Cloth Simulation Filter (CSF) Mathematical Formulation
-The point cloud is inverted along the $Z$-axis ($z' = -z$). A virtual physical cloth modeled as a grid of particles connected by inter-particle springs is dropped onto the inverted surface:
-
-$$m \frac{d^2 \mathbf{X}(i, j)}{dt^2} = \mathbf{F}_{\text{ext}}(i, j) + \mathbf{F}_{\text{int}}(i, j)$$
-
-Where:
-- $\mathbf{X}(i, j)$ is the 3D position of cloth particle $(i, j)$ at time $t$.
-- $\mathbf{F}_{\text{ext}} = m \mathbf{g}$ is the downward gravitational driving force.
-- $\mathbf{F}_{\text{int}} = \sum k_s (\mathbf{X}_k - \mathbf{X}(i, j))$ is the internal spring tension maintaining cloth elasticity and rigidness over steep slopes.
-
-When particles collide with inverted points, their vertical motion is constrained:
-
-$$\mathbf{X}_z(i, j) = \max \left( \mathbf{X}_z(i, j), z'_{\text{surface}} \right)$$
-
-Once the simulation reaches equilibrium ($\| \mathbf{X}(t) - \mathbf{X}(t - \Delta t) \| < \epsilon$), points within distance $h_{\text{thresh}}$ ($0.15\text{ m}$) from the simulated cloth are classified as **Ground**, and remaining points as **Non-Ground**.
-
-#### 2. Digital Elevation Model (DEM) Rasterization
-The segmented ground points $P_G = \{ (x_i, y_i, z_i) \}$ are interpolated onto a regular 2D raster grid with spatial resolution $\Delta g = 0.5\text{ m}$.
-For each grid cell $(u, v)$ with center $(x_u, y_v)$, height $Z(u, v)$ is estimated using **Inverse Distance Weighting (IDW)**:
-
-$$Z(u, v) = \frac{\sum_{i=1}^M w_i z_i}{\sum_{i=1}^M w_i}, \quad w_i = \frac{1}{\|\mathbf{p}_i - (x_u, y_v)\|_2^p}$$
-
-Where $p = 2$ is the power parameter and $M$ is the number of local ground points within search radius $R_{\text{search}}$.
-
-#### 3. Surface Mesh Reconstruction (TIN & Poisson)
-- **Triangulated Irregular Network (TIN):** Applies 2.5D Delaunay Triangulation across ground vertices, forming a piecewise linear triangular manifold.
-- **Screened Poisson Surface Reconstruction:** Computes an indicator function $\chi$ whose gradient matches the estimated surface normal field:
-  $$\nabla \cdot \nabla \chi = \nabla \cdot \mathbf{V}$$
-  Yields watertight, smooth 3D terrain meshes suitable for drone physics simulation (Gazebo / Isaac Sim).
-
-### 10.2 Step-by-Step Implementation Roadmap
-
-#### Step 1: Ground Filtering Pipeline (`scripts/extract_ground_terrain.py`)
-- Implement CSF / RANSAC ground segmentation using Python bindings (`cloth-simulation-filter`, `scipy.spatial`, `open3d`).
-- Split `scans.pcd` into:
-  - `maps/terrain_ground.pcd`
-  - `maps/terrain_non_ground.pcd`
-- Generate color-coded classification clouds (Brown = Ground, Green = Vegetation, Red = Structures).
-
-#### Step 2: DEM Raster Generation & Export (`scripts/generate_dem.py`)
-- Discretize ground points into raster geotiff / numpy elevation arrays.
-- Compute terrain topographic slope $\theta(u, v)$ and aspect $\phi(u, v)$:
-  $$\theta = \arctan \sqrt{ \left( \frac{\partial Z}{\partial x} \right)^2 + \left( \frac{\partial Z}{\partial y} \right)^2 }$$
-- Flag steep terrain slopes ($> 25^\circ$) as hazardous for UAV landing.
-- Export GeoTIFF / CSV / PNG elevation heatmaps.
-
-#### Step 3: Mesh Generation & ROS 2 Publisher (`scripts/terrain_mesh_publisher.py`)
-- Generate `.ply` / `.obj` 3D triangular surface meshes.
-- Publish `visualization_msgs/msg/Marker` (Triangle List) to topic `/terrain/surface_mesh`.
-- Render textured 3D terrain alongside the OctoMap in RViz2.
-
----
-
-## 11. Physical UAV Hardware Deployment Roadmap
-
-The final objective of this BTP project is field deployment onto the research team's physical custom-built UAV.
-
-```mermaid
-flowchart TD
-    subgraph Onboard["UAV Onboard Systems"]
-        A["Livox Mid-360 / Avia LiDAR"] -->|"Ethernet (UDP)"| C["Onboard Computer (Jetson Orin Nano / NUC)"]
-        B["Pixhawk 6C / ArduPilot IMU"] -->|"UART / MAVROS"| C
-        C --> D["livox_ros_driver2 Node"]
-        D --> E["FAST-LIO2 (Real-Time State Estimation)"]
-        E --> F["Dynamic OctoMap & Local Costmap"]
-        F --> G["Trajectory Planner (EGO-Planner / Fast-Planner)"]
-        G -->|"MAVLink SET_POSITION_TARGET"| B
-    end
-    subgraph Ground["Ground Control Station (GCS)"]
-        C -->|"5.8GHz Wi-Fi / Radio Link"| H["Remote RViz2 / Foxglove GCS"]
-    end
-```
-
-### Key Hardware Deployment Considerations
-1. **Coordinate Frame Calibration (`base_link` $\to$ `body` $\to$ `camera_init`):**
-   - Publish static TF transforms via `robot_state_publisher` reflecting the exact physical CAD mount offsets on the drone chassis.
-2. **Computational Budgeting on Embedded Hardware:**
-   - FAST-LIO2 must be configured with `point_filter_num = 4` and max iterations $= 2$ to maintain $< 30\text{ ms}$ processing time per frame on NVIDIA Jetson Orin Nano (15W power cap).
-3. **Vibration Isolation:**
-   - UAV motor frequencies ($150–250\text{ Hz}$) bleed into raw IMU measurements. Implement hardware silicone dampers and software low-pass Butterworth filters ($50\text{ Hz}$ cutoff) on linear accelerations.
-
----
-
-## 12. Summary Table of Artifacts, Scripts, and Configurations
-
-| Path / File | Type / Language | Description & Operational Status |
+| Path | Type | Description |
 | :--- | :--- | :--- |
-| [`scripts/convert_mars_bag.py`](file:///home/shaurya/BTP_UAV_LiDAR_Reconstruction/scripts/convert_mars_bag.py) | Python 3 (`rosbags`) | Converts legacy ROS 1 bags to ROS 2 Jazzy CDR format, drops corrupt startup scans. |
-| [`scripts/verify_ros2_bag.py`](file:///home/shaurya/BTP_UAV_LiDAR_Reconstruction/scripts/verify_ros2_bag.py) | Python 3 | Verifies ROS 2 bag point integrity, coordinates, and packet validity. |
-| [`scripts/diagnose_filtering.py`](file:///home/shaurya/BTP_UAV_LiDAR_Reconstruction/scripts/diagnose_filtering.py) | Python 3 | Evaluates FAST-LIO2 blind-spot, scan line, and reflectivity pre-filters. |
-| [`src/FAST_LIO_ROS2/config/avia.yaml`](file:///home/shaurya/BTP_UAV_LiDAR_Reconstruction/src/FAST_LIO_ROS2/config/avia.yaml) | YAML Config | Configures FAST-LIO2 extrinsics, sensor topics, and IEKF covariances. |
-| [`src/FAST_LIO_ROS2/PCD/scans.pcd`](file:///home/shaurya/BTP_UAV_LiDAR_Reconstruction/src/FAST_LIO_ROS2/PCD/scans.pcd) | Binary PCD (59 MB) | Global accumulated point cloud (1,907,061 points) from `HKairport01`. |
-| [`scripts/pcd_to_octomap.cpp`](file:///home/shaurya/BTP_UAV_LiDAR_Reconstruction/scripts/pcd_to_octomap.cpp) | C++17 (PCL, OctoMap) | High-speed offline converter from PCD to `.bt` and `.ot` volumetric octrees. |
-| [`maps/uav_octomap_0.1m.bt`](file:///home/shaurya/BTP_UAV_LiDAR_Reconstruction/maps/uav_octomap_0.1m.bt) | Binary OctoMap | 0.1m resolution map (328.6 KB, 531,026 nodes). |
-| [`maps/uav_octomap_0.2m.bt`](file:///home/shaurya/BTP_UAV_LiDAR_Reconstruction/maps/uav_octomap_0.2m.bt) | Binary OctoMap | 0.2m resolution baseline map (86.3 KB, 157,247 nodes). |
-| [`maps/uav_octomap_0.4m.bt`](file:///home/shaurya/BTP_UAV_LiDAR_Reconstruction/maps/uav_octomap_0.4m.bt) | Binary OctoMap | 0.4m resolution coarse map (22.2 KB, 41,000+ nodes). |
-| [`maps/dynamic_octomap.bt`](file:///home/shaurya/BTP_UAV_LiDAR_Reconstruction/maps/dynamic_octomap.bt) | Binary OctoMap | **Adaptive dynamic map (0.05m–0.40m)** (334.7 KB, 1,370,457 nodes). |
-| [`maps/dynamic_octomap.ot`](file:///home/shaurya/BTP_UAV_LiDAR_Reconstruction/maps/dynamic_octomap.ot) | Full OcTree (.ot) | Full OcTree storing probabilities and inner node hierarchy (6.6 MB). |
-| [`scripts/dynamic_voxel_octomap.cpp`](file:///home/shaurya/BTP_UAV_LiDAR_Reconstruction/scripts/dynamic_voxel_octomap.cpp) | C++17 (OpenMP, PCL, OctoMap) | Multi-threaded adaptive voxel OctoMap engine with curvature & range depth scaling. |
-| [`scripts/benchmark_octomap.cpp`](file:///home/shaurya/BTP_UAV_LiDAR_Reconstruction/scripts/benchmark_octomap.cpp) | C++17 (PCL, OctoMap) | Multi-resolution benchmarking engine (Chamfer distance, raycast throughput). |
-| [`Reports/benchmark_octomap_results.md`](file:///home/shaurya/BTP_UAV_LiDAR_Reconstruction/Reports/benchmark_octomap_results.md) | Markdown Report | Quantitative evaluation summary table comparing uniform and dynamic octrees. |
-| [`launch/octomap_server.launch.py`](file:///home/shaurya/BTP_UAV_LiDAR_Reconstruction/launch/octomap_server.launch.py) | ROS 2 Launch (Python) | Production launch file supporting dynamic resolution, auto map selection, and RViz. |
-| [`scripts/pcd_publisher.py`](file:///home/shaurya/BTP_UAV_LiDAR_Reconstruction/scripts/pcd_publisher.py) | ROS 2 Node (Python) | Parameterized publisher broadcasting point clouds with `TRANSIENT_LOCAL` QoS. |
-| [`configs/octomap.rviz`](file:///home/shaurya/BTP_UAV_LiDAR_Reconstruction/configs/octomap.rviz) | RViz2 Configuration | Custom displays for voxels, projected 2D map, point clouds, and TF frames. |
-| [`scripts/test_octomap_pipeline.py`](file:///home/shaurya/BTP_UAV_LiDAR_Reconstruction/scripts/test_octomap_pipeline.py) | Python 3 / ROS 2 | Automated test suite validating pipeline end-to-end (100% test pass). |
-| [`Reports/Mid_term_report_23IM10052.tex`](file:///home/shaurya/BTP_UAV_LiDAR_Reconstruction/Reports/Mid_term_report_23IM10052.tex) | LaTeX Document | Official BTP-I mid-semester submission summary document. |
-
----
-
-*Report prepared and compiled autonomously by Antigravity for Shaurya Baranwal (23IM10052), Department of Industrial and Systems Engineering, IIT Kharagpur.*
-
+| `scripts/convert_mars_bag.py` | Python (`rosbags`) | ROS 1 → ROS 2 Livox/IMU conversion; drops 169 start-up scans |
+| `scripts/verify_ros2_bag.py` | Python | Checks converted scans for valid XYZ data |
+| `scripts/diagnose_filtering.py` | Python | Reproduces FAST-LIO2's Livox pre-filters |
+| `src/FAST_LIO_ROS2/config/avia.yaml` | YAML | FAST-LIO2 configuration and extrinsics |
+| `src/FAST_LIO_ROS2/PCD/scans.pcd` | Binary PCD, 59 MB | Accumulated map, 1,907,061 points |
+| `src/FAST_LIO_ROS2/Log/mat_pre.txt` | Text | FAST-LIO2 per-scan states (186 poses) |
+| `scripts/pcd_to_octomap.cpp` | C++ (PCL, OctoMap) | Uniform OctoMap converter |
+| `scripts/dynamic_voxel_octomap.cpp` | C++ (OpenMP, PCL, OctoMap) | Two-pass adaptive OctoMap generator |
+| `scripts/benchmark_octomap.cpp` | C++ (OpenMP, PCL, OctoMap) | Verification, fidelity and ray-casting benchmark |
+| `scripts/octomap_common.hpp` | C++ header | Shared helpers (trajectory loading, key/depth utilities) |
+| `scripts/build_octomap_tools.sh` | Bash | Builds the three C++ tools |
+| `scripts/generate_plots.py` | Python (matplotlib) | Generates all figures from the benchmark JSON |
+| `maps/uav_octomap_{0.05,0.1,0.2,0.4}m.bt` | Binary OctoMap | Uniform maps (1,077.3 / 320.9 / 84.3 / 21.7 KB) |
+| `maps/dynamic_octomap.bt` / `.ot` | OctoMap | Adaptive map (337.4 KB) / full-probability tree (2.6 MB) |
+| `maps/legacy/dynamic_octomap_naive_expand.bt` | Binary OctoMap | Naive-expansion prototype, kept as a negative control |
+| `Reports/benchmark/benchmark_results.json` | JSON | All benchmark metrics |
+| `Reports/benchmark/dynamic_octomap_stats.json` | JSON | Adaptive generation statistics |
+| `Reports/benchmark/logs/` | Text | Console logs of every generation, benchmark and test run |
+| `Reports/benchmark_octomap_results.md` | Markdown | Summary table written by the benchmark |
+| `Reports/figures/*.png` | PNG | Report figures |
+| `launch/octomap_server.launch.py` | ROS 2 launch | Uniform / adaptive / live map serving, optional RViz2 |
+| `scripts/pcd_publisher.py` | ROS 2 node | Latched PCD publisher (`TRANSIENT_LOCAL`) |
+| `configs/octomap.rviz` | RViz2 config | Voxel, projected map, point cloud and TF displays |
+| `configs/qos_override.yaml` | YAML | Reliable / volatile QoS for bag replay |
+| `scripts/test_octomap_pipeline.py` | Python / ROS 2 | Automated verification suite (27 checks) |
+| `Reports/BTP_Report.tex` | LaTeX | BTP-I report |

@@ -1,0 +1,76 @@
+==========================================================
+  OCTOMAP BENCHMARK & VERIFICATION
+  Point cloud: src/FAST_LIO_ROS2/PCD/scans.pcd
+  Trajectory:  src/FAST_LIO_ROS2/Log/mat_pre.txt
+  Rays: 50000, max range 30 m
+==========================================================
+[INFO] 1907061 points, 186 trajectory poses.
+
+[BENCHMARK] Uniform 0.40 m (maps/uav_octomap_0.4m.bt)
+  nodes 41343, occupied leaves 30299, file 21.7070 KB
+  unsupported leaves 0 (0.0000 m^3), coverage 100.0000 %, occupied volume 2108.4800 m^3, max voxel 0.8000 m
+  chamfer 0.1626 m (c2m 0.1967, m2c 0.1284; edge c2m 0.1925, planar c2m 0.1986)
+  voxel size at edge pts 0.4569 m, at planar pts 0.4112 m
+  load 2.1625 ms, memory 1336.5469 KB
+  [rays:omni] castRay 3.1689 us/ray, hits 3863, mean hit dist 18.5049 m, origins in occupied voxels 0 | hierarchical 0.4976 us/ray, hits 3885, cells/ray 6.2091, agreement 99.9520 %, median |dd| 0.1607 m
+  [rays:surface] castRay 2.5195 us/ray, hits 49959, mean hit dist 19.8276 m, origins in occupied voxels 0 | hierarchical 0.9592 us/ray, hits 50000, cells/ray 12.1211, agreement 99.9180 %, median |dd| 0.1851 m
+
+[BENCHMARK] Uniform 0.20 m (maps/uav_octomap_0.2m.bt)
+  nodes 157247, occupied leaves 114165, file 84.2822 KB
+  unsupported leaves 0 (0.0000 m^3), coverage 100.0000 %, occupied volume 984.9440 m^3, max voxel 0.4000 m
+  chamfer 0.0879 m (c2m 0.1054, m2c 0.0704; edge c2m 0.1182, planar c2m 0.0972)
+  voxel size at edge pts 0.2855 m, at planar pts 0.2090 m
+  load 8.3342 ms, memory 5149.9219 KB
+  [rays:omni] castRay 5.5745 us/ray, hits 3696, mean hit dist 18.8848 m, origins in occupied voxels 0 | hierarchical 0.5026 us/ray, hits 3704, cells/ray 6.3516, agreement 99.9840 %, median |dd| 0.0823 m
+  [rays:surface] castRay 4.6653 us/ray, hits 49975, mean hit dist 20.0225 m, origins in occupied voxels 0 | hierarchical 1.1100 us/ray, hits 50000, cells/ray 13.4193, agreement 99.9500 %, median |dd| 0.0923 m
+
+[BENCHMARK] Uniform 0.10 m (maps/uav_octomap_0.1m.bt)
+  nodes 531026, occupied leaves 366772, file 320.9463 KB
+  unsupported leaves 0 (0.0000 m^3), coverage 100.0000 %, occupied volume 389.3050 m^3, max voxel 0.2000 m
+  chamfer 0.0472 m (c2m 0.0539, m2c 0.0406; edge c2m 0.0605, planar c2m 0.0488)
+  voxel size at edge pts 0.1390 m, at planar pts 0.1037 m
+  load 32.6888 ms, memory 18563.4688 KB
+  [rays:omni] castRay 9.7449 us/ray, hits 3612, mean hit dist 18.9840 m, origins in occupied voxels 0 | hierarchical 0.5284 us/ray, hits 3618, cells/ray 6.4923, agreement 99.9880 %, median |dd| 0.0408 m
+  [rays:surface] castRay 8.7962 us/ray, hits 49993, mean hit dist 20.1086 m, origins in occupied voxels 0 | hierarchical 1.4629 us/ray, hits 50000, cells/ray 14.6913, agreement 99.9860 %, median |dd| 0.0460 m
+
+[BENCHMARK] Uniform 0.05 m (maps/uav_octomap_0.05m.bt)
+  nodes 1388554, occupied leaves 837055, file 1077.2861 KB
+  unsupported leaves 0 (0.0000 m^3), coverage 100.0000 %, occupied volume 109.2457 m^3, max voxel 0.2000 m
+  chamfer 0.0240 m (c2m 0.0259, m2c 0.0222; edge c2m 0.0281, planar c2m 0.0242)
+  voxel size at edge pts 0.0639 m, at planar pts 0.0503 m
+  load 99.6341 ms, memory 56165.1562 KB
+  [rays:omni] castRay 18.0816 us/ray, hits 3364, mean hit dist 18.8188 m, origins in occupied voxels 0 | hierarchical 0.5632 us/ray, hits 3366, cells/ray 6.7131, agreement 99.9920 %, median |dd| 0.0203 m
+  [rays:surface] castRay 16.0541 us/ray, hits 49994, mean hit dist 20.2147 m, origins in occupied voxels 0 | hierarchical 1.8270 us/ray, hits 50000, cells/ray 16.4199, agreement 99.9880 %, median |dd| 0.0230 m
+
+[BENCHMARK] Dynamic Adaptive (maps/dynamic_octomap.bt)
+  nodes 485603, occupied leaves 312904, file 337.4414 KB
+  unsupported leaves 0 (0.0000 m^3), coverage 100.0000 %, occupied volume 1161.7590 m^3, max voxel 0.8000 m
+  chamfer 0.0508 m (c2m 0.0699, m2c 0.0317; edge c2m 0.0281, planar c2m 0.1244)
+  voxel size at edge pts 0.0639 m, at planar pts 0.2789 m
+  load 34.1970 ms, memory 18381.5469 KB
+  [rays:omni] castRay 17.0271 us/ray, hits 3699, mean hit dist 18.9993 m, origins in occupied voxels 0 | hierarchical 0.5254 us/ray, hits 3705, cells/ray 6.4594, agreement 99.9880 %, median |dd| 0.0197 m
+  [rays:surface] castRay 15.1393 us/ray, hits 49998, mean hit dist 20.0626 m, origins in occupied voxels 0 | hierarchical 1.3724 us/ray, hits 50000, cells/ray 14.8650, agreement 99.9960 %, median |dd| 0.0227 m
+
+[BENCHMARK] Legacy naive-expand (maps/legacy/dynamic_octomap_naive_expand.bt)
+  nodes 1370457, occupied leaves 1199150, file 334.7236 KB
+  unsupported leaves 872179 (35184370872.4165 m^3), coverage 100.0000 %, occupied volume 35184372089.2039 m^3, max voxel 1638.4000 m
+  chamfer 0.1808 m (c2m 0.0749, m2c 0.2867; edge c2m 0.0246, planar c2m 0.1386)
+  voxel size at edge pts 0.0527 m, at planar pts 0.3054 m
+  load 50.9703 ms, memory 32120.3906 KB
+  [rays:omni] castRay 0.0427 us/ray, hits 50000, mean hit dist 0.0241 m, origins in occupied voxels 50000 | hierarchical 0.0390 us/ray, hits 50000, cells/ray 1.0000, agreement 100.0000 %, median |dd| 0.0247 m
+  [rays:surface] castRay 0.0466 us/ray, hits 50000, mean hit dist 0.0232 m, origins in occupied voxels 50000 | hierarchical 0.0427 us/ray, hits 50000, cells/ray 1.0000, agreement 100.0000 %, median |dd| 0.0237 m
+
+### OctoMap Benchmark & Verification Results
+
+Generated by `scripts/benchmark_octomap` on `src/FAST_LIO_ROS2/PCD/scans.pcd` (1907061 points). Rays: 50000 from 186 FAST-LIO2 trajectory poses per ray set (omni: uniform directions; surface: towards random cloud points), 30.000000 m max range. Full metrics in `Reports/benchmark/benchmark_results.json`.
+
+| Map | File (KB) | Nodes | Occ. leaves | Unsupported leaves | Coverage (%) | Occ. volume (m^3) | Chamfer (m) | Voxel @ edge pts (m) | Voxel @ planar pts (m) | castRay omni (us/ray) | Hierarchical omni (us/ray) | castRay surface (us/ray) | Hierarchical surface (us/ray) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| Uniform 0.40 m | 21.7 | 41343 | 30299 | 0 | 100.00 | 2108.5 | 0.1626 | 0.457 | 0.411 | 3.17 | 0.50 | 2.52 | 0.96 |
+| Uniform 0.20 m | 84.3 | 157247 | 114165 | 0 | 100.00 | 984.9 | 0.0879 | 0.285 | 0.209 | 5.57 | 0.50 | 4.67 | 1.11 |
+| Uniform 0.10 m | 320.9 | 531026 | 366772 | 0 | 100.00 | 389.3 | 0.0472 | 0.139 | 0.104 | 9.74 | 0.53 | 8.80 | 1.46 |
+| Uniform 0.05 m | 1077.3 | 1388554 | 837055 | 0 | 100.00 | 109.2 | 0.0240 | 0.064 | 0.050 | 18.08 | 0.56 | 16.05 | 1.83 |
+| Dynamic Adaptive | 337.4 | 485603 | 312904 | 0 | 100.00 | 1161.8 | 0.0508 | 0.064 | 0.279 | 17.03 | 0.53 | 15.14 | 1.37 |
+| Legacy naive-expand | 334.7 | 1370457 | 1199150 | 872179 | 100.00 | 35184372089.2 | 0.1808 | 0.053 | 0.305 | 0.04 | 0.04 | 0.05 | 0.04 |
+[INFO] Markdown written to Reports/benchmark_octomap_results.md
+[INFO] JSON written to Reports/benchmark/benchmark_results.json
