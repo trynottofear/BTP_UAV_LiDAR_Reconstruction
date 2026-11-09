@@ -24,6 +24,11 @@ datasets/
 # Point cloud output dumps
 *.pcd
 
+# Compiled utility binaries
+scripts/pcd_to_octomap
+scripts/dynamic_voxel_octomap
+scripts/benchmark_octomap
+
 # IDE & OS files
 .vscode/
 .idea/
