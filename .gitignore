@@ -35,3 +35,8 @@ scripts/benchmark_octomap
 .DS_Store
 *.swp
 *~
+
+# Per-run OctoMaps too large for GitHub (full flight: 0.05 m .bt is 104 MB, adaptive .ot is 451 MB);
+# regenerate with scripts/run_offline_pipeline.sh <run>. Benchmark JSON/figures/logs and trajectories are kept.
+maps/HKairport01_full/
+maps/*/dynamic/*.ot

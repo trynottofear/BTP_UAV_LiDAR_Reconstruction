@@ -5,6 +5,7 @@ Inputs:  Reports/benchmark/benchmark_results.json   (scripts/benchmark_octomap)
          Reports/benchmark/dynamic_octomap_stats.json (scripts/dynamic_voxel_octomap --stats)
 Outputs: Reports/figures/*.png
 """
+import argparse
 import json
 import os
 
@@ -14,9 +15,15 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-BENCH = os.path.join(ROOT, "Reports", "benchmark", "benchmark_results.json")
-STATS = os.path.join(ROOT, "Reports", "benchmark", "dynamic_octomap_stats.json")
-OUT = os.path.join(ROOT, "Reports", "figures")
+ap = argparse.ArgumentParser(description="Generate report figures from benchmark outputs.")
+ap.add_argument("--run", default=None,
+                help="run name: reads Reports/benchmark/<run>/ and writes Reports/figures/<run>/ "
+                     "(default: the original 20 s layout, Reports/benchmark/ and Reports/figures/)")
+args = ap.parse_args()
+sub = [args.run] if args.run else []
+BENCH = os.path.join(ROOT, "Reports", "benchmark", *sub, "benchmark_results.json")
+STATS = os.path.join(ROOT, "Reports", "benchmark", *sub, "dynamic_octomap_stats.json")
+OUT = os.path.join(ROOT, "Reports", "figures", *sub)
 os.makedirs(OUT, exist_ok=True)
 
 # Palette (validated reference categorical slots 1-2) and neutral inks.
@@ -66,6 +73,8 @@ fig, axes = plt.subplots(1, 2, figsize=(8.6, 3.6), sharey=True)
 titles = {"omni": "Omnidirectional rays (mostly misses)", "surface": "Surface-directed rays (mostly hits)"}
 x = range(len(maps))
 w = 0.38
+all_lat = [m["rays"][k][t]["us_per_ray"] for m in maps for k in ("omni", "surface") for t in ("castray", "hierarchical")]
+lat_lo, lat_hi = min(all_lat) / 1.8, max(all_lat) * 2.2   # headroom for value labels and the legend
 for ax, key in zip(axes, ["omni", "surface"]):
     a = [m["rays"][key]["castray"]["us_per_ray"] for m in maps]
     b = [m["rays"][key]["hierarchical"]["us_per_ray"] for m in maps]
@@ -74,7 +83,7 @@ for ax, key in zip(axes, ["omni", "surface"]):
     bar_labels(ax, b1, lambda v: f"{v:.1f}")
     bar_labels(ax, b2, lambda v: f"{v:.2f}")
     ax.set_yscale("log")
-    ax.set_ylim(0.2, 40)
+    ax.set_ylim(lat_lo, lat_hi)
     ax.set_xticks(list(x))
     ax.set_xticklabels(labels)
     ax.set_title(titles[key], color=INK)
@@ -108,6 +117,7 @@ save(fig, "storage_footprint.png")
 # Figure 3: accuracy vs storage, split by point class (edge / planar).
 # ---------------------------------------------------------------------------------------------
 fig, axes = plt.subplots(1, 2, figsize=(8.6, 3.5), sharey=True)
+label_pos = {"chamfer_c2m_edge": (0.84, 0.40), "chamfer_c2m_planar": (0.66, 0.70)}  # empty regions above the uniform curve
 for ax, key, title in [(axes[0], "chamfer_c2m_edge", "Edge / thin-structure points ($\\sigma_n \\geq 0.06$)"),
                        (axes[1], "chamfer_c2m_planar", "Planar points ($\\sigma_n < 0.025$)")]:
     ux = [m["file_kb"] for m in uniform]
@@ -119,8 +129,9 @@ for ax, key, title in [(axes[0], "chamfer_c2m_edge", "Edge / thin-structure poin
                     textcoords="offset points", fontsize=8, color=INK2)
     ax.plot([dynamic["file_kb"]], [dynamic[key]], "D", color=C2, ms=8, label="Adaptive (this work)", zorder=4,
             markeredgecolor="white", markeredgewidth=1.5)
-    ax.annotate(f"Adaptive\n{dynamic[key]:.3f} m", (dynamic["file_kb"], dynamic[key]), xytext=(-62, 10),
-                textcoords="offset points", fontsize=8, color=INK)
+    ax.annotate(f"Adaptive: {dynamic[key]:.3f} m", (dynamic["file_kb"], dynamic[key]), xytext=label_pos[key],
+                textcoords="axes fraction", fontsize=8.5, color=INK, ha="center",
+                arrowprops=dict(arrowstyle="-", color=INK2, lw=0.8, shrinkA=2, shrinkB=6))
     ax.set_xscale("log")
     ax.set_xlabel("Binary file size (KB, log scale)")
     ax.set_title(title, color=INK)
@@ -168,7 +179,7 @@ for bars in (r1, r2):
 axes[0].set_yticks(list(yy))
 axes[0].set_yticklabels(dlabels)
 axes[0].set_xlabel(f"Share of {tot:,} points (%)")
-axes[0].set_xlim(0, 88)
+axes[0].set_xlim(0, 1.14 * max(100 * v / tot for v in req + ins))
 axes[0].set_title("Points per octree depth", color=INK)
 axes[0].legend(loc="center right")
 axes[0].grid(axis="y", visible=False)

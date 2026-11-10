@@ -1,0 +1,36 @@
+==========================================================
+  DYNAMIC / ADAPTIVE VOXEL OCTOMAP GENERATOR (two-pass)
+  Input PCD:       pointclouds/HKairport01_120s/scans.pcd
+  Output BT:       maps/HKairport01_120s/dynamic/dynamic_octomap.bt
+  Trajectory:      pointclouds/HKairport01_120s/mat_pre.txt
+  Base resolution: 0.05 m, depths [13, 16]
+==========================================================
+[INFO] Loaded 10209061 points (10209061 finite) in 0.724231 s.
+[INFO] Surface variation (k=25) in 12.8948 s using 48 threads.
+[INFO] Range to nearest of 1195 trajectory poses computed in 1.39452 s.
+[INFO] Two-pass octree build in 19.9048 s. Conflicts: 0 (must be 0), out-of-bounds points: 0
+
+--- Requested depth per point (policy output) ---
+  Depth 13 (0.4 m): 326844 (3.20151%)
+  Depth 14 (0.2 m): 1427877 (13.9864%)
+  Depth 15 (0.1 m): 266970 (2.61503%)
+  Depth 16 (0.05 m): 8187370 (80.1971%)
+
+--- Insertion depth per point (after neighbourhood refinement) ---
+  Depth 13 (0.4 m): 145057 (1.42087%)
+  Depth 14 (0.2 m): 788100 (7.71961%)
+  Depth 15 (0.1 m): 457762 (4.48388%)
+  Depth 16 (0.05 m): 8818142 (86.3756%)
+Writing 9649528 nodes to output stream... done.
+
+--- Occupied leaves in written .bt (after max-likelihood pruning) ---
+  Depth 12 (0.8 m): 8 (0.000145552%)
+  Depth 13 (0.4 m): 51665 (0.939996%)
+  Depth 14 (0.2 m): 265633 (4.83294%)
+  Depth 15 (0.1 m): 273554 (4.97706%)
+  Depth 16 (0.05 m): 4905442 (89.2499%)
+
+[INFO] Tree size: 9649528 nodes, 5496302 occupied leaves, 0 free leaves.
+[INFO] Metric bounds: X [-74.65, 23.2]  Y [-131.6, 128.8]  Z [-99.2, 198.8]
+[INFO] Wrote maps/HKairport01_120s/dynamic/dynamic_octomap.bt and maps/HKairport01_120s/dynamic/dynamic_octomap.ot
+[INFO] Stats written to Reports/benchmark/HKairport01_120s/dynamic_octomap_stats.json

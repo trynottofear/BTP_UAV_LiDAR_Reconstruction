@@ -2,11 +2,20 @@ from rosbags.rosbag1 import Reader
 from rosbags.rosbag2 import Writer
 from rosbags.typesys import Stores, get_typestore, get_types_from_msg
 from pathlib import Path
-import sys
+import argparse
 
-INPUT = Path(sys.argv[1])
-OUTPUT = Path(sys.argv[2])
-SKIP_LIDAR = 169
+ap = argparse.ArgumentParser(description="Convert a MARS-LVIG ROS 1 bag (Livox lidar + IMU only) to a ROS 2 bag.")
+ap.add_argument("input", type=Path, help="source .bag")
+ap.add_argument("output", type=Path, help="output ROS 2 bag directory (must not exist)")
+ap.add_argument("--skip", type=int, default=169, help="invalid start-up LiDAR scans to drop (default 169)")
+ap.add_argument("--duration", type=float, default=None,
+                help="keep only this many seconds after the first kept scan (default: whole bag)")
+args = ap.parse_args()
+
+INPUT = args.input
+OUTPUT = args.output
+SKIP_LIDAR = args.skip
+DURATION_NS = None if args.duration is None else int(args.duration * 1e9)
 
 # ROS1 type store
 ros1_store = get_typestore(Stores.ROS1_NOETIC)
@@ -87,6 +96,10 @@ lidar_seen = 0
 for conn, timestamp, rawdata in reader.messages(
     connections=[lidar_conn, imu_conn]
 ):
+    # Stop once the requested duration (measured from the first kept scan) has been covered.
+    if DURATION_NS is not None and first_timestamp is not None and timestamp > first_timestamp + DURATION_NS:
+        break
+
     # =========================================================
     # LiDAR
     # =========================================================

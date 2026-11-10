@@ -1,0 +1,19 @@
+========================================
+  PCD to OctoMap Converter
+  Input:      pointclouds/HKairport01_full/scans.pcd
+  Output:     maps/HKairport01_full/uniform/uav_octomap_0.1m.bt
+  Resolution: 0.1 m
+========================================
+[INFO] Successfully loaded 61177769 points from PCD.
+[INFO] Integrated 61177769 valid 3D points.
+[INFO] Updating inner occupancy...
+[INFO] Tree depth: 16
+[INFO] Total tree nodes: 52199148
+[INFO] Total leaf nodes: 31472158
+[INFO] OctoMap Metric Bounding Box:
+       X: [-79.5 to 282.8] m
+       Y: [-255.5 to 296.7] m
+       Z: [-303.6 to 290.2] m
+[INFO] Writing compact binary OcTree (.bt)...
+Writing 51075412 nodes to output stream... done.
+[SUCCESS] Saved OctoMap to: maps/HKairport01_full/uniform/uav_octomap_0.1m.bt

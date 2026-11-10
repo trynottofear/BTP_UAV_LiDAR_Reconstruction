@@ -1,0 +1,96 @@
+==========================================================
+  OCTOMAP BENCHMARK & VERIFICATION
+  Point cloud: pointclouds/HKairport01_full/scans.pcd
+  Trajectory:  pointclouds/HKairport01_full/mat_pre.txt
+  Rays: 50000, max range 30 m
+==========================================================
+[INFO] 61177769 points, 7556 trajectory poses.
+
+[BENCHMARK] Uniform 0.40 m (maps/HKairport01_full/uniform/uav_octomap_0.4m.bt)
+Reading binary octree type OcTree
+Reading binary octree type OcTree
+Reading binary octree type OcTree
+Reading binary octree type OcTree
+Reading binary octree type OcTree
+Reading binary octree type OcTree
+  nodes 5614717, occupied leaves 4025361, file 3104.3496 KB
+  unsupported leaves 0 (0.0000 m^3), coverage 100.0000 %, occupied volume 299707.3280 m^3, max voxel 1.6000 m
+  chamfer 0.1862 m (c2m 0.2194, m2c 0.1531; edge c2m 0.2216, planar c2m 0.2043)
+  voxel size at edge pts 0.5158 m, at planar pts 0.4353 m
+  load 477.5849 ms, memory 187065.0156 KB
+  [rays:omni] castRay 4.4115 us/ray, hits 579, mean hit dist 16.3281 m, origins in occupied voxels 0 | hierarchical 0.5152 us/ray, hits 582, cells/ray 3.9450, agreement 99.9940 %, median |dd| 0.1566 m
+  [rays:surface] castRay 3.3447 us/ray, hits 49989, mean hit dist 19.0418 m, origins in occupied voxels 0 | hierarchical 1.7839 us/ray, hits 50000, cells/ray 13.3136, agreement 99.9780 %, median |dd| 0.1690 m
+
+[BENCHMARK] Uniform 0.20 m (maps/HKairport01_full/uniform/uav_octomap_0.2m.bt)
+Reading binary octree type OcTree
+Reading binary octree type OcTree
+Reading binary octree type OcTree
+Reading binary octree type OcTree
+Reading binary octree type OcTree
+Reading binary octree type OcTree
+  nodes 19210636, occupied leaves 13034845, file 12062.2314 KB
+  unsupported leaves 0 (0.0000 m^3), coverage 100.0000 %, occupied volume 114942.3920 m^3, max voxel 0.8000 m
+  chamfer 0.0957 m (c2m 0.1082, m2c 0.0832; edge c2m 0.1096, planar c2m 0.0972)
+  voxel size at edge pts 0.2486 m, at planar pts 0.2095 m
+  load 1821.1980 ms, memory 686153.4375 KB
+  [rays:omni] castRay 8.1370 us/ray, hits 534, mean hit dist 16.9922 m, origins in occupied voxels 0 | hierarchical 0.3962 us/ray, hits 537, cells/ray 3.9792, agreement 99.9940 %, median |dd| 0.0801 m
+  [rays:surface] castRay 6.4778 us/ray, hits 49998, mean hit dist 19.4678 m, origins in occupied voxels 0 | hierarchical 1.9201 us/ray, hits 50000, cells/ray 15.6052, agreement 99.9960 %, median |dd| 0.0842 m
+
+[BENCHMARK] Uniform 0.10 m (maps/HKairport01_full/uniform/uav_octomap_0.1m.bt)
+Reading binary octree type OcTree
+Reading binary octree type OcTree
+Reading binary octree type OcTree
+Reading binary octree type OcTree
+Reading binary octree type OcTree
+Reading binary octree type OcTree
+  nodes 51075412, occupied leaves 30488889, file 40208.1924 KB
+  unsupported leaves 0 (0.0000 m^3), coverage 100.0000 %, occupied volume 31521.2560 m^3, max voxel 0.4000 m
+  chamfer 0.0482 m (c2m 0.0515, m2c 0.0449; edge c2m 0.0520, planar c2m 0.0476)
+  voxel size at edge pts 0.1138 m, at planar pts 0.1008 m
+  load 6529.6919 ms, memory 2084711.3125 KB
+  [rays:omni] castRay 12.8453 us/ray, hits 524, mean hit dist 17.2107 m, origins in occupied voxels 0 | hierarchical 0.3815 us/ray, hits 525, cells/ray 4.0084, agreement 99.9980 %, median |dd| 0.0392 m
+  [rays:surface] castRay 10.5635 us/ray, hits 49999, mean hit dist 19.7031 m, origins in occupied voxels 0 | hierarchical 2.5158 us/ray, hits 50000, cells/ray 17.9998, agreement 99.9980 %, median |dd| 0.0422 m
+
+[BENCHMARK] Uniform 0.05 m (maps/HKairport01_full/uniform/uav_octomap_0.05m.bt)
+Reading binary octree type OcTree
+Reading binary octree type OcTree
+Reading binary octree type OcTree
+Reading binary octree type OcTree
+Reading binary octree type OcTree
+Reading binary octree type OcTree
+  nodes 98704545, occupied leaves 46517605, file 101927.7578 KB
+  unsupported leaves 0 (0.0000 m^3), coverage 100.0000 %, occupied volume 5874.4736 m^3, max voxel 0.1000 m
+  chamfer 0.0242 m (c2m 0.0249, m2c 0.0234; edge c2m 0.0250, planar c2m 0.0250)
+  voxel size at edge pts 0.0535 m, at planar pts 0.0500 m
+  load 15666.7968 ms, memory 4803942.5781 KB
+  [rays:omni] castRay 26.6407 us/ray, hits 511, mean hit dist 17.2547 m, origins in occupied voxels 0 | hierarchical 0.4541 us/ray, hits 511, cells/ray 4.0455, agreement 100.0000 %, median |dd| 0.0196 m
+  [rays:surface] castRay 22.9181 us/ray, hits 49999, mean hit dist 19.8692 m, origins in occupied voxels 0 | hierarchical 3.3570 us/ray, hits 50000, cells/ray 20.8264, agreement 99.9980 %, median |dd| 0.0211 m
+
+[BENCHMARK] Dynamic Adaptive (maps/HKairport01_full/dynamic/dynamic_octomap.bt)
+Reading binary octree type OcTree
+Reading binary octree type OcTree
+Reading binary octree type OcTree
+Reading binary octree type OcTree
+Reading binary octree type OcTree
+Reading binary octree type OcTree
+  nodes 89783149, occupied leaves 43953795, file 89510.5977 KB
+  unsupported leaves 0 (0.0000 m^3), coverage 100.0000 %, occupied volume 27157.1392 m^3, max voxel 0.8000 m
+  chamfer 0.0286 m (c2m 0.0304, m2c 0.0269; edge c2m 0.0250, planar c2m 0.1094)
+  voxel size at edge pts 0.0535 m, at planar pts 0.2415 m
+  load 13443.8887 ms, memory 4267196.6406 KB
+  [rays:omni] castRay 18.0660 us/ray, hits 518, mean hit dist 17.3219 m, origins in occupied voxels 0 | hierarchical 0.3749 us/ray, hits 518, cells/ray 4.0396, agreement 100.0000 %, median |dd| 0.0196 m
+  [rays:surface] castRay 19.7123 us/ray, hits 49999, mean hit dist 19.8183 m, origins in occupied voxels 0 | hierarchical 3.2143 us/ray, hits 50000, cells/ray 20.4068, agreement 99.9980 %, median |dd| 0.0211 m
+
+### OctoMap Benchmark & Verification Results
+
+Generated by `scripts/benchmark_octomap` on `pointclouds/HKairport01_full/scans.pcd` (61177769 points). Rays: 50000 from 7556 FAST-LIO2 trajectory poses per ray set (omni: uniform directions; surface: towards random cloud points), 30.0 m max range. Full metrics in `Reports/benchmark/benchmark_results.json`.
+
+| Map | File (KB) | Nodes | Occ. leaves | Unsupported leaves | Coverage (%) | Occ. volume (m^3) | Chamfer (m) | Voxel @ edge pts (m) | Voxel @ planar pts (m) | castRay omni (us/ray) | Hierarchical omni (us/ray) | castRay surface (us/ray) | Hierarchical surface (us/ray) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| Uniform 0.40 m | 3104.3 | 5614717 | 4025361 | 0 | 100.00 | 299707.3 | 0.1862 | 0.516 | 0.435 | 4.41 | 0.52 | 3.34 | 1.78 |
+| Uniform 0.20 m | 12062.2 | 19210636 | 13034845 | 0 | 100.00 | 114942.4 | 0.0957 | 0.249 | 0.209 | 8.14 | 0.40 | 6.48 | 1.92 |
+| Uniform 0.10 m | 40208.2 | 51075412 | 30488889 | 0 | 100.00 | 31521.3 | 0.0482 | 0.114 | 0.101 | 12.85 | 0.38 | 10.56 | 2.52 |
+| Uniform 0.05 m | 101927.8 | 98704545 | 46517605 | 0 | 100.00 | 5874.5 | 0.0242 | 0.053 | 0.050 | 26.64 | 0.45 | 22.92 | 3.36 |
+| Dynamic Adaptive | 89510.6 | 89783149 | 43953795 | 0 | 100.00 | 27157.1 | 0.0286 | 0.053 | 0.242 | 18.07 | 0.37 | 19.71 | 3.21 |
+[INFO] Markdown written to Reports/benchmark/HKairport01_full/benchmark_octomap_results.md
+[INFO] JSON written to Reports/benchmark/HKairport01_full/benchmark_results.json

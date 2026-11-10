@@ -1,0 +1,16 @@
+{
+  "input_points": 61177769,
+  "finite_points": 61177769,
+  "trajectory": "pointclouds/HKairport01_full/mat_pre.txt",
+  "trajectory_poses": 7556,
+  "base_resolution": 0.05,
+  "d_min": 13, "d_max": 16, "k": 25,
+  "requested_depth_points": {"13": 1115015, "14": 6483420, "15": 96686, "16": 53482648},
+  "insertion_depth_points": {"13": 311036, "14": 3798912, "15": 2078220, "16": 54989601},
+  "occupied_leaf_depths": {"12": 25, "13": 114361, "14": 1667580, "15": 1386419, "16": 40785410},
+  "class_points": {"edge": 53482648, "moderate_far": 6441683, "moderate_near": 96686, "planar_far": 1115015, "planar_near": 41737},
+  "tree_nodes": 89783149,
+  "occupied_leaves": 43953795,
+  "conflicts": 0,
+  "timing_s": {"load": 44.8074, "curvature": 68.6414, "build": 200.139}
+}

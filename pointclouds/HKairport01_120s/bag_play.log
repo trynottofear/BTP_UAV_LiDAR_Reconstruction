@@ -1,0 +1,8 @@
+stdin is not a terminal device. Keyboard handling disabled.[INFO] [1794264667.097791209] [rosbag2_storage]: Opened database 'datasets/HKairport01_120s/HKairport01_120s.db3' for READ_ONLY.
+[INFO] [1794264667.099226271] [rosbag2_player]: Set rate to 0.5
+[INFO] [1794264667.104547826] [rosbag2_player]: Adding keyboard callbacks.
+[INFO] [1794264667.104578594] [rosbag2_player]: Press SPACE for Pause/Resume
+[INFO] [1794264667.104584186] [rosbag2_player]: Press CURSOR_RIGHT for Play Next Message
+[INFO] [1794264667.104591526] [rosbag2_player]: Press CURSOR_UP for Increase Rate 10%
+[INFO] [1794264667.104595587] [rosbag2_player]: Press CURSOR_DOWN for Decrease Rate 10%
+[INFO] [1794264667.105809633] [rosbag2_player]: Playback until timestamp: -1
